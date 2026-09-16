@@ -1,6 +1,11 @@
 {
   "version": 2,
   "cleanUrls": true,
+  "rewrites": [
+    { "source": "/rss/bigcompany.php", "destination": "/api/bigcompany" },
+    { "source": "/api/rss_lyon.xml", "destination": "/api/bigcompany" },
+    { "source": "/rss/bigcompany", "destination": "/api/bigcompany" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
