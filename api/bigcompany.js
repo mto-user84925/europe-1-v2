@@ -2,19 +2,21 @@ import fs from 'fs';
 import path from 'path';
 
 function mapDescriptionToTemps(desc) {
-    if (!desc) return 'Soleil';
+    if (!desc) return 'soleil';
     const d = desc.toLowerCase();
-    if (d.includes('clair') || d.includes('ensoleillé') || d.includes('beau')) return 'Soleil';
-    if (d.includes('voilé')) return 'Soleil voilé';
-    if (d.includes('éclaircie') || d.includes('eclaircie')) return 'Eclaircies';
-    if (d.includes('très nuageux') || d.includes('couvert') || d.includes('nuageux')) return 'Nuageux';
-    if (d.includes('orage')) return 'Orages';
-    if (d.includes('averse') || d.includes('ondée')) return 'Averses';
-    if (d.includes('bruine')) return 'Bruine';
-    if (d.includes('neige')) return 'Neige';
-    if (d.includes('brouillard') || d.includes('brume')) return 'Brouillard';
-    if (d.includes('pluie')) return 'Pluie';
-    return desc;
+    if (d.includes('orage')) return 'orages';
+    if (d.includes('grêle') || d.includes('grele')) return 'grele';
+    if (d.includes('forte neige') || d.includes('fortes chutes de neige')) return 'forteneige';
+    if (d.includes('neige')) return 'neige';
+    if (d.includes('pluie forte') || d.includes('fortes pluies') || d.includes('pluies fortes')) return 'pluieforte';
+    if (d.includes('averse') || d.includes('ondée')) return 'averse';
+    if (d.includes('brouillard') || d.includes('brume')) return 'brouillard';
+    if (d.includes('pluie') || d.includes('bruine')) return 'pluie';
+    if (d.includes('couvert')) return 'couvert';
+    if (d.includes('voilé') || d.includes('soleil voilé') || d.includes('très nuageux') || d.includes('nuageux')) return 'nuageux';
+    if (d.includes('éclaircie') || d.includes('eclaircie') || d.includes('peu nuageux')) return 'eclaircies';
+    if (d.includes('clair') || d.includes('ensoleillé') || d.includes('soleil') || d.includes('beau')) return 'soleil';
+    return 'nuageux';
 }
 
 const MONTHS_EN = [
@@ -85,7 +87,7 @@ async function getSessionToken() {
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
     const lat = req.query.lat ? parseFloat(req.query.lat) : 45.76;
     const lon = req.query.lon ? parseFloat(req.query.lon) : 4.84;
@@ -154,7 +156,7 @@ export default async function handler(req, res) {
 
         return res.status(200).send(xml);
     } catch (err) {
-        console.error('Erreur génération flux RSS Météo-France:', err);
-        return res.status(500).send(`<?xml version="1.0" encoding="UTF-8"?><error>${err.message}</error>`);
+        console.error('Erreur génération flux RSS:', err.message);
+        return res.status(500).send(`<?xml version="1.0" encoding="UTF-8"?><error>Service temporairement indisponible</error>`);
     }
 }
