@@ -3933,9 +3933,15 @@
                 let data = await res.json();
                 globalGeoBoundary = data;
 
+                // Normalisation : s'assurer que data est toujours une FeatureCollection
+                // Certains fichiers régionaux ne contiennent qu'une seule "Feature" brute.
+                if (data && data.type === 'Feature') {
+                    data = { type: 'FeatureCollection', features: [data] };
+                }
+
                 // Pré-calcul de la frontière unique (Union de tous les polygones du GeoJSON)
                 try {
-                    if (data.features.length > 0) {
+                    if (data && data.features && data.features.length > 0) {
                         globalBoundaryPolygon = data.features.reduce((acc, feat) => {
                             try { return acc ? turf.union(acc, feat) : feat; } catch (ex) { return acc; }
                         }, null);
@@ -3945,12 +3951,6 @@
                 } catch (e) {
                     console.error("Boundary calculation error:", e);
                     globalBoundaryPolygon = null;
-                }
-
-                // Normalisation : s'assurer que data est toujours une FeatureCollection
-                // Certains fichiers régionaux ne contiennent qu'une seule "Feature" brute.
-                if (data.type === 'Feature') {
-                    data = { type: 'FeatureCollection', features: [data] };
                 }
 
                 // Filtrage de précision 
