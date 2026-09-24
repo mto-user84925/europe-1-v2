@@ -1815,10 +1815,13 @@
     </div>
 
     <script>
-        // Vérification au chargement : déjà connecté dans cette session ?
+        // Vérification au chargement : déjà connecté dans cette session ou mode embed/headless ?
         (function () {
-            if (sessionStorage.getItem('mcp_auth') === '1') {
-                document.getElementById('login-overlay').style.display = 'none';
+            const urlP = new URLSearchParams(window.location.search);
+            if (urlP.get('embed') === 'btp' || urlP.has('headless') || sessionStorage.getItem('mcp_auth') === '1') {
+                sessionStorage.setItem('mcp_auth', '1');
+                const overlay = document.getElementById('login-overlay');
+                if (overlay) overlay.style.display = 'none';
             }
         })();
 
@@ -9309,65 +9312,123 @@ function parsePicto(s) {
                 const check = document.getElementById('temp-highlight-check');
                 if (check) check.checked = true;
             }
-            if (urlParams.has('headless')) {
-                // Apply headless CSS/JS layout
-                document.getElementById('sidebar').style.display = 'none';
+            const isEmbed = urlParams.get('embed') === 'btp';
+            const isHeadless = urlParams.has('headless') || isEmbed;
+            if (isHeadless) {
+                // Apply headless/embed CSS/JS layout
+                const sb = document.getElementById('sidebar');
+                if (sb) sb.style.display = 'none';
+                const lo = document.getElementById('login-overlay');
+                if (lo) lo.style.display = 'none';
+
                 const workArea = document.getElementById('work-area');
-                const orient = urlParams.get('orientation') || 'landscape';
-                const isPortrait = orient === 'portrait';
-                const isSquare = orient === 'square';
-                const isLandscape = !isPortrait && !isSquare;
-                
-                if (workArea) {
-                    workArea.style.left = '0';
-                    workArea.style.width = isPortrait ? '1080px' : (isSquare ? '1080px' : '1920px');
-                    workArea.style.height = isPortrait ? '1920px' : (isSquare ? '1080px' : '1080px');
-                    workArea.style.padding = '0';
-                }
                 const captureArea = document.getElementById('capture-area');
-                if (captureArea) {
-                    if (isPortrait) {
-                        captureArea.classList.add('portrait-mode');
-                        captureArea.style.width = '1080px';
-                        captureArea.style.height = '1920px';
-                    } else if (isSquare) {
-                        captureArea.classList.add('square-mode');
-                        captureArea.style.width = '1080px';
-                        captureArea.style.height = '1080px';
-                    } else {
+
+                if (isEmbed) {
+                    // Mode Responsive Embed BTP France
+                    document.body.style.margin = '0';
+                    document.body.style.padding = '0';
+                    document.body.style.overflow = 'hidden';
+                    document.body.style.width = '100vw';
+                    document.body.style.height = '100vh';
+                    document.documentElement.style.overflow = 'hidden';
+                    document.documentElement.style.margin = '0';
+                    document.documentElement.style.padding = '0';
+
+                    if (workArea) {
+                        workArea.style.position = 'absolute';
+                        workArea.style.top = '0';
+                        workArea.style.left = '0';
+                        workArea.style.width = '100vw';
+                        workArea.style.height = '100vh';
+                        workArea.style.padding = '0';
+                        workArea.style.overflow = 'hidden';
+                    }
+                    if (captureArea) {
                         captureArea.classList.add('landscape-mode');
                         captureArea.style.width = '1920px';
                         captureArea.style.height = '1080px';
+                        captureArea.style.boxShadow = 'none';
+                        captureArea.style.position = 'absolute';
+                        captureArea.style.top = '0';
+                        captureArea.style.left = '0';
                     }
-                    captureArea.style.boxShadow = 'none';
-                }
-                if (isPortrait || isSquare || isLandscape) {
-                    const w = isLandscape ? '1920px' : '1080px';
-                    const h = isPortrait ? '1920px' : '1080px';
-                    document.body.style.width = w;
-                    document.body.style.height = h;
-                    document.body.style.overflow = 'hidden';
-                    document.documentElement.style.width = w;
-                    document.documentElement.style.height = h;
-                    document.documentElement.style.overflow = 'hidden';
+
+                    function resizeEmbed() {
+                        const w = window.innerWidth;
+                        const h = window.innerHeight;
+                        const scale = Math.min(w / 1920, h / 1080);
+                        if (captureArea) {
+                            captureArea.style.transform = `scale(${scale})`;
+                            captureArea.style.transformOrigin = 'top left';
+                            const offsetX = Math.max(0, (w - 1920 * scale) / 2);
+                            const offsetY = Math.max(0, (h - 1080 * scale) / 2);
+                            captureArea.style.left = `${offsetX}px`;
+                            captureArea.style.top = `${offsetY}px`;
+                        }
+                    }
+                    window.addEventListener('resize', resizeEmbed);
+                    resizeEmbed();
+                } else {
+                    const orient = urlParams.get('orientation') || 'landscape';
+                    const isPortrait = orient === 'portrait';
+                    const isSquare = orient === 'square';
+                    const isLandscape = !isPortrait && !isSquare;
+                    
+                    if (workArea) {
+                        workArea.style.left = '0';
+                        workArea.style.width = isPortrait ? '1080px' : (isSquare ? '1080px' : '1920px');
+                        workArea.style.height = isPortrait ? '1920px' : (isSquare ? '1080px' : '1080px');
+                        workArea.style.padding = '0';
+                    }
+                    if (captureArea) {
+                        if (isPortrait) {
+                            captureArea.classList.add('portrait-mode');
+                            captureArea.style.width = '1080px';
+                            captureArea.style.height = '1920px';
+                        } else if (isSquare) {
+                            captureArea.classList.add('square-mode');
+                            captureArea.style.width = '1080px';
+                            captureArea.style.height = '1080px';
+                        } else {
+                            captureArea.classList.add('landscape-mode');
+                            captureArea.style.width = '1920px';
+                            captureArea.style.height = '1080px';
+                        }
+                        captureArea.style.boxShadow = 'none';
+                    }
+                    if (isPortrait || isSquare || isLandscape) {
+                        const w = isLandscape ? '1920px' : '1080px';
+                        const h = isPortrait ? '1920px' : '1080px';
+                        document.body.style.width = w;
+                        document.body.style.height = h;
+                        document.body.style.overflow = 'hidden';
+                        document.documentElement.style.width = w;
+                        document.documentElement.style.height = h;
+                        document.documentElement.style.overflow = 'hidden';
+                    }
                 }
             }
 
             if (urlParams.has('zone')) {
-                document.getElementById('zone-select').value = urlParams.get('zone');
+                const zSel = document.getElementById('zone-select');
+                if (zSel) zSel.value = urlParams.get('zone');
             }
             handleZoneChange(true);
             
-            if (urlParams.has('headless')) {
+            if (isHeadless) {
                 // Set day, parameter, and period
                 if (urlParams.has('day')) {
-                    document.getElementById('day-select').value = urlParams.get('day');
+                    const dSel = document.getElementById('day-select');
+                    if (dSel) dSel.value = urlParams.get('day');
                 }
                 if (urlParams.has('param')) {
-                    document.getElementById('param-select').value = urlParams.get('param');
+                    const pSel = document.getElementById('param-select');
+                    if (pSel) pSel.value = urlParams.get('param');
                 }
                 if (urlParams.has('period')) {
-                    document.getElementById('period-select').value = urlParams.get('period');
+                    const perSel = document.getElementById('period-select');
+                    if (perSel) perSel.value = urlParams.get('period');
                 }
                 
                 // Force size invalidation and fit bounds after layout rendering settled

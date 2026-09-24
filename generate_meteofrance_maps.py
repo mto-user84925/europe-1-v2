@@ -507,7 +507,7 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None, days=8):
 save_done_event = threading.Event()
 saved_image_data = {}
 
-def capture_map_playwright(target_url, orientation="landscape"):
+def capture_map_playwright(target_url, orientation="landscape", timeout=45):
     """Capture #capture-area via Playwright (pixels réels, pas de re-fetch CORS)."""
     from playwright.sync_api import sync_playwright
     from PIL import Image
@@ -519,7 +519,7 @@ def capture_map_playwright(target_url, orientation="landscape"):
         # Injecter la session auth avant le chargement de la page (bypass login)
         ctx.add_init_script("sessionStorage.setItem('mcp_auth', '1');")
         page = ctx.new_page()
-        page.goto(target_url, wait_until='networkidle', timeout=30000)
+        page.goto(target_url, wait_until='networkidle', timeout=timeout * 1000)
         # Attendre que les tuiles Leaflet soient chargées (classe leaflet-tile-loaded)
         try:
             page.wait_for_function(
@@ -866,11 +866,18 @@ def main():
         img_bytes = capture_map_playwright(target_url, orientation, timeout=45)
         if img_bytes:
             suffix = f"_{orientation}" if orientation != "landscape" else ""
-            filename = f"carte_{zone_key}_J{actual_day}_{period_name}{suffix}.jpg" if zone_key != "france_pictos" else f"carte_{period_name}{suffix}.jpg"
+            if zone_key != "france_pictos":
+                filename = f"carte_{zone_key}_J{actual_day}_{period_name}{suffix}.jpg"
+            else:
+                filename = f"carte_J{actual_day}_{period_name}{suffix}.jpg"
             filepath = os.path.join(DEST_DIR, filename)
             with open(filepath, 'wb') as f_img:
                 f_img.write(img_bytes)
             print(f"   -> Saved: {filepath}")
+            if actual_day == 1:
+                legacy_path = os.path.join(DEST_DIR, f"carte_{period_name}{suffix}.jpg")
+                with open(legacy_path, 'wb') as f_img:
+                    f_img.write(img_bytes)
         else:
             print(f"   -> Error: Playwright capture failed for J{actual_day} {period_name}.")
 
