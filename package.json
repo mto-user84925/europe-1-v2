@@ -2,7 +2,7 @@
   "name": "europe-1-v2",
   "private": true,
   "scripts": {
-    "build": "node -e \"const fs = require('fs'); fs.copyFileSync('index.html', 'dist/index.html'); console.log('Synced index.html to dist');\""
+    "build": "node -e \"const fs = require('fs'); fs.copyFileSync('index.html', 'public/index.html'); fs.copyFileSync('index.html', 'dist/index.html'); console.log('Synced index.html to public and dist');\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.1",
