@@ -26,6 +26,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Météo France - Expert Edition Finale</title>
 
+    <script>
+        (function () {
+            try {
+                const urlP = new URLSearchParams(window.location.search);
+                if (urlP.get('embed') === 'btp' || urlP.has('headless')) {
+                    sessionStorage.setItem('mcp_auth', '1');
+                    document.write('<style id="btp-embed-css">#sidebar, #login-overlay, .sidebar, #top-bar, .header, #commune-actions, #map-controls-group, #hourly-controls, #modal-overlay, #icon-picker-modal { display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; } html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !important; background: #070d19 !important; width: 100vw !important; height: 100vh !important; } #work-area { position: absolute !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; padding: 0 !important; overflow: hidden !important; } #capture-area { box-shadow: none !important; }</style>');
+                }
+            } catch (e) {}
+        })();
+    </script>
+
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
