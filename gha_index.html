@@ -3978,8 +3978,23 @@
                 }
                 try {
                     const zoneVal = document.getElementById('zone-select').value || 'france_pictos';
-                    const dataFile = zoneVal === 'france_pictos' ? 'meteofrance_data.json' : `meteofrance_data_${zoneVal}.json`;
-                    const res = await fetch(dataFile);
+                    const zoneAliases = {
+                        'france_pictos': ['meteofrance_data.json'],
+                        'france': ['meteofrance_data_france.json', 'meteofrance_data.json'],
+                        'cnews': ['meteofrance_data_cnews.json', 'meteofrance_data.json'],
+                        'ile-de-france': ['meteofrance_data_ile-de-france.json', 'meteofrance_data_idf.json'],
+                        'idf': ['meteofrance_data_idf.json', 'meteofrance_data_ile-de-france.json'],
+                        'grand-est': ['meteofrance_data_grand-est.json', 'meteofrance_data_grandest.json'],
+                        'grandest': ['meteofrance_data_grandest.json', 'meteofrance_data_grand-est.json']
+                    };
+                    const candidateFiles = zoneAliases[zoneVal] || [`meteofrance_data_${zoneVal}.json`];
+                    let res = null;
+                    for (const dataFile of candidateFiles) {
+                        try {
+                            const r = await fetch(dataFile);
+                            if (r && r.ok) { res = r; break; }
+                        } catch (_) {}
+                    }
                     if (res.ok) {
                         globalWeatherData = await res.json();
                         isUsingMFData = true;

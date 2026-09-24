@@ -95,42 +95,56 @@ def get_zone_cities(zone_key):
         with open(index_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         
-        # Locate the start of the zone configuration
-        start_pos = content.find(f"{zone_key}: {{")
-        if start_pos == -1:
-            start_pos = content.find(f"'{zone_key}': {{")
-        if start_pos == -1:
-            start_pos = content.find(f'"{zone_key}": {{')
-            
+        ZONE_MAP = {
+            'idf': 'ile-de-france',
+            'grandest': 'grand-est',
+            'ile-de-france': 'idf',
+            'grand-est': 'grandest'
+        }
+        keys = [zone_key]
+        if zone_key in ZONE_MAP:
+            keys.append(ZONE_MAP[zone_key])
+
+        start_pos = -1
+        for k in keys:
+            for pattern in [f"{k}: {{", f"'{k}': {{", f'"{k}": {{']:
+                p = content.find(pattern)
+                if p != -1:
+                    start_pos = p
+                    break
+            if start_pos != -1:
+                break
+
         if start_pos == -1:
             return None
-            
-        cities_start = content.find("cities: [", start_pos)
-        if cities_start == -1:
+
+        m_cities = re.search(r'["\']?cities["\']?\s*:\s*\[', content[start_pos:])
+        if not m_cities:
             return None
-        
-        # Match closing bracket of cities array
+        cities_start = start_pos + m_cities.end() - 1
+
         bracket_count = 1
-        pos = cities_start + len("cities: [")
+        pos = cities_start + 1
         while pos < len(content) and bracket_count > 0:
             if content[pos] == '[':
                 bracket_count += 1
             elif content[pos] == ']':
                 bracket_count -= 1
             pos += 1
-            
-        cities_str = content[cities_start + len("cities: [") : pos - 1]
-        
-        # Regex to parse objects like { name: "...", lat: ..., lon: ... }
-        pattern = r'\{\s*name:\s*["\']([^"\']+)["\']\s*,\s*lat:\s*([0-9.-]+)\s*,\s*lon:\s*([0-9.-]+)'
+
+        cities_str = content[cities_start + 1 : pos - 1]
+
+        # Regex to parse objects like { name: "...", lat: ..., lon: ... } with or without quotes
+        pattern = r'\{\s*["\']?name["\']?\s*:\s*(?:"([^"]+)"|\'([^\']+)\')\s*,\s*["\']?lat["\']?\s*:\s*([0-9.-]+)\s*,\s*["\']?lon["\']?\s*:\s*([0-9.-]+)'
         matches = re.findall(pattern, cities_str)
-        
+
         cities = []
-        for name, lat, lon in matches:
+        for m in matches:
+            name = m[0] or m[1]
             cities.append({
                 "name": name,
-                "lat": float(lat),
-                "lon": float(lon)
+                "lat": float(m[2]),
+                "lon": float(m[3])
             })
         return cities if cities else None
     except Exception as e:
@@ -661,10 +675,14 @@ def main():
     # Ephemeris city: national = Paris, regional = chef-lieu of the region
     ZONE_EPHEMERIS_CITY = {
         "france_pictos": {"name": "Paris",      "lat": 48.8566, "lon":  2.3522},
+        "cnews":         {"name": "Paris",      "lat": 48.8566, "lon":  2.3522},
+        "france":        {"name": "Paris",      "lat": 48.8566, "lon":  2.3522},
         "hdf":           {"name": "Lille",       "lat": 50.6292, "lon":  3.0573},
         "normandie":     {"name": "Rouen",       "lat": 49.4432, "lon":  1.0993},
         "idf":           {"name": "Paris",       "lat": 48.8566, "lon":  2.3522},
+        "ile-de-france": {"name": "Paris",      "lat": 48.8566, "lon":  2.3522},
         "grandest":      {"name": "Strasbourg",  "lat": 48.5734, "lon":  7.7521},
+        "grand-est":     {"name": "Strasbourg",  "lat": 48.5734, "lon":  7.7521},
         "ara":           {"name": "Lyon",        "lat": 45.7640, "lon":  4.8357},
         "naq":           {"name": "Bordeaux",    "lat": 44.8378, "lon": -0.5792},
         "occitanie":     {"name": "Toulouse",    "lat": 43.6047, "lon":  1.4442},
@@ -675,7 +693,7 @@ def main():
         "cvl":           {"name": "Orléans",     "lat": 47.9029, "lon":  1.9092},
         "corse":         {"name": "Ajaccio",     "lat": 41.9192, "lon":  8.7386},
     }
-    eph_city = ZONE_EPHEMERIS_CITY.get(zone_key, {"name": "Paris", "lat": 48.8566, "lon": 2.3522})
+    eph_city = ZONE_EPHEMERIS_CITY.get(zone_key, cities_list[0] if cities_list else {"name": "Paris", "lat": 48.8566, "lon": 2.3522})
     eph_in_list = any(abs(c.get('lat', 0) - eph_city['lat']) < 0.05 and abs(c.get('lon', 0) - eph_city['lon']) < 0.05 for c in cities_list)
 
     # Pre-fetch all gusts in a single batch request
@@ -730,6 +748,22 @@ def main():
     with open(JSON_OUT_PATH, 'w', encoding='utf-8') as f:
         json.dump(weather_data_list, f, indent=2)
     print(f"Successfully generated weather data file: {JSON_OUT_PATH}")
+
+    # Dual-write alias file if applicable (e.g. idf <-> ile-de-france, grandest <-> grand-est)
+    ZONE_ALIASES = {
+        'idf': 'ile-de-france',
+        'ile-de-france': 'idf',
+        'grandest': 'grand-est',
+        'grand-est': 'grandest',
+    }
+    if zone_key in ZONE_ALIASES:
+        alt_key = ZONE_ALIASES[zone_key]
+        alt_path = os.path.join(PROJECT_DIR, f"meteofrance_data_{alt_key}.json")
+        try:
+            shutil.copy(JSON_OUT_PATH, alt_path)
+            print(f"Dual-wrote alias JSON: {alt_path}")
+        except Exception as e:
+            print(f"Failed to dual-write alias JSON {alt_path}: {e}")
 
     if json_only:
         print("Mode JSON-only actif. Fin de l'exécution sans capture d'images.")

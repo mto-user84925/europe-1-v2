@@ -30,9 +30,11 @@ jobs:
         run: |
           # Générer les données de prévisions nationales (16 jours par défaut en json-only)
           python "generate_site_json.py" --zone france_pictos --json-only
+          python "generate_site_json.py" --zone cnews --json-only
+          python "generate_site_json.py" --zone france --json-only
 
-          # Liste des zones régionales
-          $zones = @("hdf", "normandie", "idf", "grandest", "ara", "naq", "occitanie", "paca", "bfc", "bretagne", "pdl", "cvl", "corse")
+          # Liste des zones régionales et départements
+          $zones = @("hdf", "normandie", "idf", "grandest", "ara", "naq", "occitanie", "paca", "bfc", "bretagne", "pdl", "cvl", "corse", "hautes-alpes", "alpes-de-haute-provence", "alpes-maritimes", "bouches-du-rhone", "var", "var_zoom", "vaucluse")
           foreach ($zone in $zones) {
               python "generate_site_json.py" --zone $zone --json-only
           }

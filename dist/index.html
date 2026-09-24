@@ -2362,7 +2362,7 @@
                 <div id="map-container">
                     <div id="map"></div>
                     <div id="logo-on-map" class="site-logo">
-                        <img src="logo meteo climat pro 3.png" alt="Logo">
+                        <img src="logo_monsieur_meteo.png" alt="Logo">
                     </div>
                     <div id="auto-title-container">
                         <h1 id="main-auto-title">CHARGEMENT...</h1>
@@ -4284,18 +4284,43 @@
                 }
                 try {
                     const zoneVal = document.getElementById('zone-select').value || 'france_pictos';
-                    const dataFile = zoneVal === 'france_pictos' ? 'meteofrance_data.json' : `meteofrance_data_${zoneVal}.json`;
+                    const zoneAliases = {
+                        'france_pictos': ['meteofrance_data.json'],
+                        'france': ['meteofrance_data_france.json', 'meteofrance_data.json'],
+                        'cnews': ['meteofrance_data_cnews.json', 'meteofrance_data.json'],
+                        'ile-de-france': ['meteofrance_data_ile-de-france.json', 'meteofrance_data_idf.json'],
+                        'idf': ['meteofrance_data_idf.json', 'meteofrance_data_ile-de-france.json'],
+                        'grand-est': ['meteofrance_data_grand-est.json', 'meteofrance_data_grandest.json'],
+                        'grandest': ['meteofrance_data_grandest.json', 'meteofrance_data_grand-est.json']
+                    };
+                    const candidateFiles = zoneAliases[zoneVal] || [`meteofrance_data_${zoneVal}.json`];
                     
-                    // ponytail: fetch directly from GitHub raw with timestamp anti-cache, fallback to Vercel relative path
-                    const ghUrl = `https://raw.githubusercontent.com/monsieurmeteo/europe-1-v2/main/${dataFile}?t=${Date.now()}`;
-                    let res = await fetch(ghUrl);
-                    if (!res.ok) {
-                        res = await fetch(dataFile);
+                    let res = null;
+                    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+                    
+                    for (const dataFile of candidateFiles) {
+                        if (isLocal) {
+                            try {
+                                const r = await fetch(`${dataFile}?t=${Date.now()}`);
+                                if (r && r.ok) { res = r; break; }
+                            } catch (_) {}
+                        }
+                        try {
+                            const ghUrl = `https://raw.githubusercontent.com/monsieurmeteo/europe-1-v2/main/${dataFile}?t=${Date.now()}`;
+                            const r = await fetch(ghUrl);
+                            if (r && r.ok) { res = r; break; }
+                        } catch (_) {}
+                        try {
+                            const r = await fetch(`${dataFile}?t=${Date.now()}`);
+                            if (r && r.ok) { res = r; break; }
+                        } catch (_) {}
                     }
 
-                    if (res.ok) {
+                    if (res && res.ok) {
                         globalWeatherData = await res.json();
                         isUsingMFData = true;
+                        window.isUsingMFData = true;
+                        window.globalWeatherData = globalWeatherData;
                         if (loading) loading.style.display = 'none';
                         updateDaySelectorLabels();
                         updateDisplay();
@@ -4306,6 +4331,7 @@
                 }
             }
             isUsingMFData = false;
+            window.isUsingMFData = false;
             const lats = currentConfig.cities.map(c => c.lat).join(',');
             const lons = currentConfig.cities.map(c => c.lon).join(',');
             const tempModel = (document.getElementById('temp-model-select')?.value) || 'ecmwf_ifs';
