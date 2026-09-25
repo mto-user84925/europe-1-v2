@@ -649,6 +649,7 @@ def compile_video(zone, cards, script_phrases, output_path, music_path, api_key,
         shutil.rmtree(temp_dir)
     except Exception:
         pass
+    return durations
 
 def main():
     parser = argparse.ArgumentParser(description="Générateur Automatique de Bulletins Vidéo (Météo-Climat Pro)")

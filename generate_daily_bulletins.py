@@ -20,6 +20,7 @@ from generate_tiktok_bulletins import (
     find_music_path,
     collect_cards,
     compile_video,
+    check_encoder,
     get_api_key,
     log
 )
@@ -92,7 +93,7 @@ def generate_bulletin_pair(mode, script_phrases, output_dir, maps_dir, music_pat
     cards_land = collect_cards("france", maps_dir, orientation="landscape")
     temp_land = os.path.join(output_dir, f"temp_{mode}_land")
     log(f"🎬 [1/2] Compilation {mode.upper()} PAYSAGE 16:9...")
-    compile_video("france", cards_land, script_phrases, landscape_file, music_path, api_key, temp_land, orientation="landscape")
+    durations = compile_video("france", cards_land, script_phrases, landscape_file, music_path, api_key, temp_land, orientation="landscape")
 
     # 2. Cartes Portrait & réutilisation de la piste audio
     cards_port = collect_cards("france", maps_dir, orientation="portrait")
@@ -106,33 +107,16 @@ def generate_bulletin_pair(mode, script_phrases, output_dir, maps_dir, music_pat
         "-vn", "-c:a", "copy", extracted_audio
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Obtenir la durée exacte de chaque segment vidéo via ffprobe
-    has_nvenc = False
-    try:
-        res = subprocess.run(["ffmpeg", "-encoders"], capture_output=True, text=True)
-        if "h264_nvenc" in res.stdout:
-            has_nvenc = True
-    except Exception:
-        pass
-    v_codec = ["-c:v", "h264_nvenc", "-preset", "p4", "-b:v", "4000k"] if has_nvenc else ["-c:v", "libx264", "-preset", "fast", "-crf", "20"]
+    # Encodeur vidéo (teste réellement la présence d'un GPU NVENC, sinon libx264)
+    encoder = check_encoder()
+    v_codec = ["-c:v", "h264_nvenc", "-preset", "p4", "-b:v", "4000k"] if encoder == "h264_nvenc" else ["-c:v", "libx264", "-preset", "fast", "-crf", "20"]
 
     filter_str = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"
     concat_txt = os.path.join(temp_port, "concat.txt")
 
-    # Récupérer les durées réelles des segments paysage
-    durations = []
-    for i in range(len(cards_land)):
-        seg_wav = os.path.join(temp_land, f"norm_{i:02d}.wav")
-        if os.path.exists(seg_wav):
-            import wave
-            with wave.open(seg_wav, "rb") as wf:
-                durations.append(round(wf.getnframes() / wf.getframerate(), 2))
-        else:
-            durations.append(15.0)
-
     with open(concat_txt, "w", encoding="utf-8") as f_concat:
         for i, card in enumerate(cards_port):
-            dur = durations[i] if i < len(durations) else 15.0
+            dur = durations[i] if durations and i < len(durations) else 15.0
             seg_p = os.path.join(temp_port, f"port_seg_{i:02d}.mp4")
             cmd = [
                 "ffmpeg", "-y", "-loop", "1", "-i", card["path"],
