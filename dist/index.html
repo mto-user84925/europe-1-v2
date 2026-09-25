@@ -1169,20 +1169,19 @@
         /* === ENCART RECORDS LILLE (HDF uniquement) === */
         #lille-records-panel {
             display: none;
-            background: rgba(18, 30, 56, 0.6);
-            border: 1.5px solid rgba(77, 184, 255, 0.4);
+            position: absolute;
+            bottom: 40px;
+            right: 30px;
+            background: rgba(8, 12, 28, 0.92);
+            border: 1.5px solid rgba(77, 184, 255, 0.5);
             border-radius: 12px;
-            padding: 14px;
-            margin-top: 10px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            /* Reset absolute position for sidebar insertion */
-            position: static !important;
-            bottom: auto !important;
-            right: auto !important;
-            pointer-events: auto !important;
-            min-width: 0 !important;
-            max-width: none !important;
-            width: auto !important;
+            padding: 14px 18px;
+            z-index: 1200;
+            pointer-events: none;
+            min-width: 290px;
+            max-width: 350px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
         }
 
         #lille-records-panel .lrp-title {
@@ -2200,60 +2199,6 @@
                             <input type="checkbox" id="show-lille-records" onchange="updateLillePanel()" checked>
                             RECORDS LILLE
                         </label>
-                        <div id="lille-records-panel">
-                            <div class="lrp-title">🌡️ Lille-Lesquin — Historique</div>
-                            <div class="lrp-date-badge" id="lrp-date">--</div>
-
-                            <div class="lrp-section">📉 Records froids</div>
-                            <div class="lrp-row">
-                                <span class="lrp-label">Record Tn absolu</span>
-                                <div class="lrp-right">
-                                    <span class="lrp-val cold" id="lrp-tn">--</span>
-                                    <span class="lrp-year" id="lrp-tn-yr"></span>
-                                </div>
-                            </div>
-                            <div class="lrp-row">
-                                <span class="lrp-label">Tn la + haute</span>
-                                <div class="lrp-right">
-                                    <span class="lrp-val neutral" id="lrp-tn-high">--</span>
-                                    <span class="lrp-year" id="lrp-tn-high-yr"></span>
-                                </div>
-                            </div>
-                            <div class="lrp-row">
-                                <span class="lrp-label">Tx la + basse</span>
-                                <div class="lrp-right">
-                                    <span class="lrp-val cold" id="lrp-tx-low">--</span>
-                                    <span class="lrp-year" id="lrp-tx-low-yr"></span>
-                                </div>
-                            </div>
-
-                            <hr class="lrp-divider">
-
-                            <div class="lrp-section">📈 Records chauds</div>
-                            <div class="lrp-row">
-                                <span class="lrp-label">Record Tx absolu</span>
-                                <div class="lrp-right">
-                                    <span class="lrp-val hot" id="lrp-tx-rec">--</span>
-                                    <span class="lrp-year" id="lrp-tx-rec-yr"></span>
-                                </div>
-                            </div>
-
-                            <hr class="lrp-divider">
-
-                            <div class="lrp-section">📊 Normales journalières</div>
-                            <div class="lrp-row">
-                                <span class="lrp-label">Normale Tx</span>
-                                <div class="lrp-right">
-                                    <span class="lrp-val warm" id="lrp-tx-norm">--</span>
-                                </div>
-                            </div>
-                            <div class="lrp-row">
-                                <span class="lrp-label">Normale Tn</span>
-                                <div class="lrp-right">
-                                    <span class="lrp-val cold" id="lrp-tn-norm">--</span>
-                                </div>
-                            </div>
-                        </div>
                         <label
                             style="font-size:11px; color:#ddd; cursor:pointer; display:flex; align-items:center; gap:10px">
                             <input type="checkbox" id="show-legend-check" onchange="updateDisplay();" checked> AFFICHER
@@ -2362,7 +2307,7 @@
                 <div id="map-container">
                     <div id="map"></div>
                     <div id="logo-on-map" class="site-logo">
-                        <img src="logo_monsieur_meteo.png" alt="Logo">
+                        <img src="logo meteo climat pro 3.png" alt="Logo">
                     </div>
                     <div id="auto-title-container">
                         <h1 id="main-auto-title">CHARGEMENT...</h1>
@@ -2403,6 +2348,61 @@
                         <div class="average-box south">
                             <div class="average-label">Moyenne SUD</div>
                             <div class="average-value" id="avg-south-val">--°</div>
+                        </div>
+                    </div>
+                    <!-- Encart Records Lille - visible uniquement en vue HDF -->
+                    <div id="lille-records-panel">
+                        <div class="lrp-title">🌡️ Lille-Lesquin — Historique</div>
+                        <div class="lrp-date-badge" id="lrp-date">--</div>
+
+                        <div class="lrp-section">📉 Records froids</div>
+                        <div class="lrp-row">
+                            <span class="lrp-label">Record Tn absolu</span>
+                            <div class="lrp-right">
+                                <span class="lrp-val cold" id="lrp-tn">--</span>
+                                <span class="lrp-year" id="lrp-tn-yr"></span>
+                            </div>
+                        </div>
+                        <div class="lrp-row">
+                            <span class="lrp-label">Tn la + haute</span>
+                            <div class="lrp-right">
+                                <span class="lrp-val neutral" id="lrp-tn-high">--</span>
+                                <span class="lrp-year" id="lrp-tn-high-yr"></span>
+                            </div>
+                        </div>
+                        <div class="lrp-row">
+                            <span class="lrp-label">Tx la + basse</span>
+                            <div class="lrp-right">
+                                <span class="lrp-val cold" id="lrp-tx-low">--</span>
+                                <span class="lrp-year" id="lrp-tx-low-yr"></span>
+                            </div>
+                        </div>
+
+                        <hr class="lrp-divider">
+
+                        <div class="lrp-section">📈 Records chauds</div>
+                        <div class="lrp-row">
+                            <span class="lrp-label">Record Tx absolu</span>
+                            <div class="lrp-right">
+                                <span class="lrp-val hot" id="lrp-tx-rec">--</span>
+                                <span class="lrp-year" id="lrp-tx-rec-yr"></span>
+                            </div>
+                        </div>
+
+                        <hr class="lrp-divider">
+
+                        <div class="lrp-section">📊 Normales journalières</div>
+                        <div class="lrp-row">
+                            <span class="lrp-label">Normale Tx</span>
+                            <div class="lrp-right">
+                                <span class="lrp-val warm" id="lrp-tx-norm">--</span>
+                            </div>
+                        </div>
+                        <div class="lrp-row">
+                            <span class="lrp-label">Normale Tn</span>
+                            <div class="lrp-right">
+                                <span class="lrp-val cold" id="lrp-tn-norm">--</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -9570,15 +9570,20 @@ function parsePicto(s) {
             // Param actif
             const paramSel = document.getElementById('param-select');
             const param = paramSel ? paramSel.value : '';
-            const isTempParam = ['temp', 'temp_max', 'temp_min', 'weather_temp'].includes(param);
+            const isTempParam = ['temp', 'temp_max', 'temp_min', 'weather_temp', 'weather'].includes(param);
+            const period = document.getElementById('period-select')?.value || 'day';
 
-            if (!isHdf || !isChecked || !isTempParam) {
+            if (!isHdf || !isChecked || !isTempParam || period === 'ephemeride') {
                 panel.style.display = 'none';
                 return;
             }
 
             const dayIdx = parseInt(document.getElementById('day-select').value) || 0;
-            const targetDate = new Date();
+            let targetDate = new Date();
+            if (globalWeatherData && globalWeatherData.length > 0 && globalWeatherData[0].hourly && globalWeatherData[0].hourly.time && globalWeatherData[0].hourly.time[0]) {
+                const baseTimeStr = globalWeatherData[0].hourly.time[0].split('T')[0];
+                targetDate = new Date(baseTimeStr + "T12:00:00");
+            }
             targetDate.setDate(targetDate.getDate() + dayIdx);
 
             const m = targetDate.getMonth() + 1;
