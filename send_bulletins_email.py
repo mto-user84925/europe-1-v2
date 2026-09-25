@@ -15,9 +15,11 @@ from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-def send_bulletin_notification(mode="grand_public"):
-    email_user = os.environ.get("SFR_EMAIL", "gregory.langlet@sfr.fr")
+def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
+    email_user = os.environ.get("SFR_EMAIL", "gregory.langlet@sfr.fr").strip().replace("\ufeff", "").replace("\u200b", "")
     email_pass = os.environ.get("SFR_PASSWORD")
+    if email_pass:
+        email_pass = email_pass.strip().replace("\ufeff", "").replace("\u200b", "")
 
     # Fallback local config si disponible
     if not email_pass:
@@ -27,7 +29,7 @@ def send_bulletin_notification(mode="grand_public"):
                 import json
                 with open(local_cfg, "r", encoding="utf-8") as f:
                     cfg = json.load(f)
-                    email_pass = cfg.get("password")
+                    email_pass = cfg.get("password", "").strip().replace("\ufeff", "").replace("\u200b", "")
             except Exception:
                 pass
 
@@ -35,9 +37,16 @@ def send_bulletin_notification(mode="grand_public"):
         print("[EMAIL] ❌ ERREUR : SFR_PASSWORD manquant, envoi annulé.", flush=True)
         return False
 
-    recipients = ["gregory.langlet@sfr.fr"]
+    trig = (os.environ.get("TRIGGERED_BY") or triggered_by or "gregory").strip().lower()
+    if trig == "patrick":
+        recipients = ["patrick.marliere@wanadoo.fr", "gregory.langlet@sfr.fr", "langlet.gregory@gmail.com"]
+    elif trig == "cron":
+        recipients = ["gregory.langlet@sfr.fr", "gregory.langlet59264@gmail.com"]
+    else:
+        recipients = ["gregory.langlet@sfr.fr", "langlet.gregory@gmail.com"]
+
     now_str = datetime.now().strftime("%d/%m/%Y")
-    mode_label = "Grand Public" if mode == "grand_public" else "BTP Pro"
+    mode_label = "Grand Public" if mode == "grand_public" else ("BTP Pro" if mode == "btp" else "Complet (Grand Public & BTP)")
 
     # Liens GitHub Releases pour téléchargement direct
     release_base = "https://github.com/mto-user84925/europe-1-v2/releases/download/bulletins-france-latest"

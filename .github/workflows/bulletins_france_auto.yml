@@ -15,6 +15,11 @@ on:
           - grand_public
           - btp
           - both
+      triggered_by:
+        description: "Déclencheur (gregory, patrick, cron)"
+        required: false
+        default: "gregory"
+        type: string
 
 permissions:
   contents: write
@@ -90,7 +95,9 @@ jobs:
           PYTHONUNBUFFERED: "1"
           SFR_EMAIL: ${{ secrets.SFR_EMAIL }}
           SFR_PASSWORD: ${{ secrets.SFR_PASSWORD }}
+          TRIGGERED_BY: ${{ github.event.inputs.triggered_by || 'gregory' }}
         run: |
           MODE="${{ github.event.inputs.mode || 'grand_public' }}"
-          python send_bulletins_email.py "$MODE"
+          TRIG="${{ github.event.inputs.triggered_by || 'gregory' }}"
+          python send_bulletins_email.py "$MODE" "$TRIG"
 

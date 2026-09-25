@@ -503,10 +503,12 @@ def tts_charon(text, output_wav, api_key):
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
+                    "HTTP-Referer": "https://meteoclimatpro.fr",
+                    "X-Title": "Meteo Climat Pro",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 }
             )
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=35) as resp:
                 pcm = resp.read()
 
             with wave.open(output_wav, "wb") as wf:
@@ -514,9 +516,10 @@ def tts_charon(text, output_wav, api_key):
                 wf.setsampwidth(2)
                 wf.setframerate(24000)
                 wf.writeframes(pcm)
+            log("🎙️ ✅ Synthèse vocale Gemini 3.8 Flash-Lite TTS (voix Charon) générée via OpenRouter !")
             return
         except Exception as e:
-            log(f"⚠️ OpenRouter TTS indisponible ({e}) -> Bascule automatique sur Edge-TTS (Henri)...")
+            log(f"⚠️ OpenRouter TTS ({e}) -> Bascule sur Edge-TTS (Henri)...")
 
     # 2. Fallback robuste 100% gratuit / Zero-Token / Zero-Quota via edge-tts (HenriNeural)
     try:
