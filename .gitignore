@@ -14,3 +14,7 @@ vigilance_output.txt
 .vercel
 
 .chrome_profile_*
+output_tiktok/
+*.mp4
+output_bulletins/
+temp_*/

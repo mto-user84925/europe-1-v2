@@ -871,6 +871,8 @@ def main():
             (3, 'afternoon', 'apresmidi', 'weather_temp'),
             (4, 'afternoon', 'apresmidi', 'weather_temp')
         ]
+        for extra_d in range(5, days_to_capture):
+            renders.append((extra_d - 1, 'afternoon', 'apresmidi', 'weather_temp'))
     else:
         periods = {
             'morning': 'matin',
