@@ -32,11 +32,14 @@ def log(msg):
     print(f"[METEO-GEN] {msg}", flush=True)
 
 def get_api_key():
+    # 1. Vérifier si OPENROUTER_API_KEY de l'environnement est valide (ignore l'ancienne clé révoquée ae1323)
     key = os.environ.get("OPENROUTER_API_KEY")
-    if key:
+    if key and not key.startswith("sk-or-v1-ae1323"):
         return key
+    # 2. Chercher dans les fichiers .env locaux
     cur_dir = os.path.dirname(os.path.abspath(__file__))
     env_paths = [
+        r"C:\Users\grego\Documents\METEO_CLIMAT\veille-automation\.env",
         os.path.join(cur_dir, ".env"),
         os.path.join(cur_dir, "..", ".env"),
         r"C:\Users\grego\Documents\METEO_CLIMAT\meteo cnews 2\.env"
@@ -46,8 +49,10 @@ def get_api_key():
             with open(ep, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("OPENROUTER_API_KEY="):
-                        return line.strip().split("=", 1)[1]
-    return None
+                        k = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
+                        if k and not k.startswith("sk-or-v1-ae1323"):
+                            return k
+    return key
 
 def check_encoder():
     try:
@@ -219,11 +224,11 @@ def load_hourly_btp_stats(zone, maps_dir):
         log(f"⚠️ Erreur lecture hourly CSV : {e}")
     return daily_stats
 
-def generate_script_from_data(zone, cards, api_key, maps_dir):
+def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public"):
     """
-    RÉDACTION BTP PRO EXPERT À PARTIR DE J+1 (DEMAIN) :
+    RÉDACTION PAR IA (GEMINI 2.5 FLASH) À PARTIR DE J+1 (DEMAIN) :
     Lit les prévisions officielles quotidiennes et horaires (Vent, Rafales, Pluie, Températures)
-    et génère le script oral broadcast de Patrick Marlière pour les chantiers.
+    et génère le script oral broadcast de Patrick Marlière pour le mode spécifié ('grand_public' ou 'btp').
     """
     zone_title = "la France entière" if zone == "france" else "les Hauts-de-France"
     csv_file = find_forecast_csv(zone, maps_dir)
@@ -312,15 +317,15 @@ def generate_script_from_data(zone, cards, api_key, maps_dir):
             h_stat = hourly_stats.get(d, {})
             vent_detail = ""
             if h_stat.get("max_gust", 0) >= 35:
-                vent_detail = f" | RAFALES CHANTIERS : pic à {h_stat['max_gust']:.0f} km/h à {h_stat['gust_city']} (vigilance grues et levage)"
+                vent_detail = f" | RAFALES : pic à {h_stat['max_gust']:.0f} km/h vers {h_stat['gust_city']}"
             else:
                 vent_detail = " | VENT : calme sous 35 km/h"
 
             pluie_detail = ""
             if h_stat.get("max_rain", 0) >= 1.0:
-                pluie_detail = f" | PLUIE : cumul jusqu'à {h_stat['max_rain']:.0f} mm vers {h_stat['rain_city']} (vigilance terrassement/béton)"
+                pluie_detail = f" | PLUIE : cumul jusqu'à {h_stat['max_rain']:.0f} mm vers {h_stat['rain_city']}"
             else:
-                pluie_detail = " | PLUIE : temps sec (idéal enrobés/maçonnerie)"
+                pluie_detail = " | PLUIE : temps sec"
 
             # Pour J+1, on génère deux entrées : Carte 1 (Matin) et Carte 2 (Après-midi)
             if idx == 0:
@@ -345,132 +350,141 @@ def generate_script_from_data(zone, cards, api_key, maps_dir):
                     f"Autres repères de l'après-midi : {', '.join(other_cities_aprem)}"
                 )
     else:
-        log("ℹ️ Fichier CSV non trouvé, utilisation des tendances saisonnières...")
+        log("ℹ️ Fichier CSV non trouvé, utilisation des tendances...")
         summary_lines = [f"- 7 jours de prévisions à partir de demain sur {zone_title}"]
 
-    prompt_text = f"""Tu es Patrick Marlière, météorologue expert officiel pour Météo-Climat Pro et Météo BTP.
-Tu rédiges le script oral complet d'un bulletin météo TV broadcast professionnel de très haute précision technique, destiné aux professionnels du BTP (chefs de chantier, artisans, conducteurs de travaux, compagnons) pour {zone_title}.
-RÈGLE ABSOLUE : Le bulletin commence TOUJOURS à J+1 (DEMAIN) et s'adresse directement aux équipes sur le terrain.
+    if mode == "btp":
+        persona = "Tu es Patrick Marlière, météorologue expert officiel pour Météo-Climat Pro et Météo BTP."
+        audience = f"un bulletin météo TV broadcast professionnel de très haute précision technique, destiné aux professionnels du BTP (chefs de chantier, artisans, conducteurs de travaux, compagnons) pour {zone_title}."
+        intro_rule = 'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP. On commence dès demain matin, [Nom du jour et date, ex: samedi 26 septembre], avec..."'
+        specific_rules = """5. PRÉCISION VENT ET RAFALES BTP :
+   - Dès que des rafales >= 40-50 km/h apparaissent, cite la vitesse en km/h et la ville avec le conseil sécurité BTP (arrêt des grues, échafaudages, travaux en hauteur).
+6. CONSEILS MÉTIERS BTP :
+   - Relie les conditions météo aux chantiers : coulage béton, séchage, terrassement, étanchéité, hydratation des ouvriers si forte chaleur."""
+        phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
+    else:
+        persona = "Tu es Patrick Marlière, présentateur météorologue officiel pour Météo-Climat Pro."
+        audience = f"le bulletin météo national grand public officiel, destiné aux téléspectateurs pour la météo au quotidien, les activités extérieures et les prévisions de la semaine pour {zone_title}."
+        intro_rule = 'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo national. On commence dès demain matin, [Nom du jour et date, ex: samedi 26 septembre], avec..."'
+        specific_rules = """5. CONSEILS GRAND PUBLIC & SORTIES :
+   - Décris l'ambiance météo de manière vivante (soleil, éclaircies, parapluie nécessaire ou non, ressenti doux ou frais).
+   - Donne des conseils pour les sorties, activités de plein air et le week-end."""
+        phrase_9_desc = "Synthèse générale de la semaine, éphéméride, et mot de conclusion chaleureux signé Météo-Climat Pro."
+
+    prompt_text = f"""{persona}
+Tu rédiges le script oral complet d'{audience}
+RÈGLE ABSOLUE : Le bulletin commence TOUJOURS à J+1 (DEMAIN).
 
 Voici la fiche technique DÉTAILLÉE CARTE PAR CARTE (les températures indiquées correspondent EXACTEMENT aux chiffres dessinés sur chaque carte) :
 {chr(10).join(summary_lines)}
 
-EXIGENCES ÉDITORIALES BTP DE HAUTE PRÉCISION :
+EXIGENCES ÉDITORIALES DE HAUTE PRÉCISION :
 1. ACCROCHE TV NATURELLE ET FLUIDE (OBLIGATOIRE) :
-   - La Phrase 1 DOIT impérativement commencer exactement par :
-     "Voici votre bulletin météo BTP. On commence dès demain matin, [Nom du jour et date, ex: samedi 26 septembre], avec..."
+   - {intro_rule}
 2. COHÉRENCE TOTALE AVEC LES CARTES (RÈGLE INVIOLABLE) :
-   - Pour la Carte 1 (seule carte du matin) : cite UNIQUEMENT les températures matinales indiquées sous la CARTE 1 !
-   - Pour les Cartes 2 à 8 (toutes d'après-midi) : cite UNIQUEMENT les températures de l'après-midi indiquées sous chaque carte ! Ne cite JAMAIS une température matinale sur une carte d'après-midi. Le téléspectateur doit entendre mot pour mot ce qu'il a sous les yeux !
+   - CARTE 1 (matin) : cite UNIQUEMENT les températures matinales indiquées sous la CARTE 1 !
+   - CARTES 2 à 8 (après-midi) : cite UNIQUEMENT les températures de l'après-midi indiquées sous chaque carte ! Ne cite JAMAIS une température matinale sur une carte d'après-midi.
 3. BAN ABSOLU DU MOT 'CELSIUS' (RÈGLE INVIOLABLE) :
-   - Ne dis JAMAIS "degrés Celsius" ni "Celsius" ! Dis uniquement "degrés" ou le chiffre brut (ex: "6 degrés", "19 degrés", "34 degrés"). N'écris jamais le symbole °C.
-4. CITATION SYSTÉMATIQUE DES EXTRÊMES (LE PLUS BAS ET LE PLUS HAUT) SUR CHAQUE CARTE :
-   - Pour CHAQUE carte météo (cartes 1 à 8), tu DOIS obligatoirement citer :
-     * La ville où il fait LE PLUS FRAIS sur la carte
-     * La ville où il fait LE PLUS CHAUD sur la carte (pic de chaleur)
-     * Et une autre ville parmi les repères proposés.
-5. PRÉCISION CHIFFRÉE SUR LE VENT ET LES RAFALES (CRITIQUE POUR LES GRUES ET LA SÉCURITÉ) :
-   - Dès que des rafales supérieures à 40-50 km/h sont mentionnées dans la fiche, cite OBLIGATOIREMENT la vitesse en km/h et la ville concernée avec le conseil sécurité BTP (arrêt des grues, vigilance toitures/échafaudages).
-6. CONSEILS MÉTIERS BTP :
-   - Relie les conditions météo aux chantiers : coulage de béton, séchage, terrassement, étanchéité, hydratation face aux fortes chaleurs à plus de 30 degrés.
-7. LONGUEUR PAR CARTE :
-   - Entre 28 et 38 mots par phrase/carte. Diction posée, professionnelle et percutante.
+   - Ne dis JAMAIS "degrés Celsius" ni "Celsius" ! Dis uniquement "degrés" ou le chiffre brut (ex: "6 degrés", "25 degrés"). N'écris jamais le symbole °C.
+4. CITATION SYSTÉMATIQUE DES EXTRÊMES SUR CHAQUE CARTE :
+   - Sur CHAQUE carte 1 à 8, cite obligatoirement la ville la plus fraîche et la ville la plus chaude.
+{specific_rules}
+7. LONGUEUR PAR PHRASE :
+   - Entre 28 et 38 mots par phrase/carte (ne dépasse pas 40 mots pour un rythme vidéo fluide). Diction posée, naturelle et percutante. N'utilise aucun placeholder entre crochets.
 
 Structure des {len(cards)} phrases dans l'ordre EXACT :
-- Phrase 1 (CARTE 1 : Matin) : "Voici votre bulletin météo BTP. On commence dès demain matin, [jour et date], avec..." + ville la plus fraîche et la plus douce du matin + vent.
-- Phrase 2 (CARTE 2 : Après-midi) : Conditions de l'après-midi + ville la plus fraîche et pic de chaleur + rafales éventuelles.
-- Phrases 3 à 8 (CARTES 3 à 8 : Après-midi des jours suivants) : Nom du jour bien mis en avant + analyse technique chantier (vent, pluie/sec) + ville la plus fraîche et la plus chaude de l'après-midi.
-- Phrase 9 (CARTE 9 : Éphéméride & Clôture) : Heure de coucher du soleil / fin de journée chantier, fête du jour, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro.
+- Phrase 1 (CARTE 1 : Matin)
+- Phrase 2 (CARTE 2 : Après-midi)
+- Phrases 3 à 8 (CARTES 3 à 8 : Après-midi des jours suivants)
+- Phrase 9 (CARTE 9 : Éphéméride & Synthèse) : {phrase_9_desc}
 
-Réponds UNIQUEMENT par un tableau JSON de {len(cards)} chaînes de caractères :
-["phrase 1", "phrase 2", ..., "phrase {len(cards)}"]. Aucun autre texte."""
+Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le tableau des {len(cards)} phrases :
+{{"phrases": ["phrase 1", "phrase 2", ..., "phrase {len(cards)}"]}}"""
 
-    # Préparation du contenu : Hybride Vision pour la France, Données seules pour HDF
-    if zone == "france":
-        log("👁️ Mode Hybride Vision activé pour la France (analyse visuelle des 9 cartes + données CSV)...")
-        content_parts = [
-            {
-                "type": "text",
-                "text": prompt_text + "\n\nTu as sous les yeux les 9 images des cartes dans le même ordre strict (Image 1 = Carte 1 matin, Image 2 = Carte 2 après-midi, etc.). Observe bien les contrastes visuels, l'emplacement des masses d'air, des nuages et des éclaircies pour un commentaire télévisé parfait !"
+    if api_key:
+        try:
+            log(f"🧠 Appel IA (Gemini 2.5 Flash via OpenRouter) pour rédaction dynamique du script ({mode.upper()})...")
+            payload = {
+                "model": "google/gemini-2.5-flash",
+                "messages": [{"role": "user", "content": prompt_text}],
+                "response_format": {"type": "json_object"}
             }
-        ]
-        for idx, card in enumerate(cards, 1):
-            p = card["path"]
-            if os.path.exists(p):
+            req = urllib.request.Request(
+                "https://openrouter.ai/api/v1/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://meteoclimatpro.fr",
+                    "X-Title": "Meteo Climat Pro",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                raw = data["choices"][0]["message"]["content"].strip()
+                if "```" in raw:
+                    parts = raw.split("```")
+                    raw = parts[1]
+                    if raw.startswith("json"):
+                        raw = raw[4:]
+                    raw = raw.strip()
+
+                raw_cleaned = re.sub(r'\\([^"\\/bfnrtu])', r'\1', raw)
                 try:
-                    im = Image.open(p)
-                    im.thumbnail((800, 450))
-                    buf = io.BytesIO()
-                    im.save(buf, format="JPEG", quality=75)
-                    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-                    content_parts.append({
-                        "type": "text",
-                        "text": f"--- CARTE {idx} : {card['label']} ---"
-                    })
-                    content_parts.append({
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
-                    })
-                except Exception as e:
-                    log(f"⚠️ Impossible d'encoder l'image {card['label']} : {e}")
+                    parsed = json.loads(raw_cleaned, strict=False)
+                except Exception:
+                    parsed = json.loads(raw, strict=False)
 
-        payload = {
-            "model": "google/gemini-2.5-flash",
-            "messages": [{"role": "user", "content": content_parts}]
-        }
-    else:
-        payload = {
-            "model": "google/gemini-2.5-flash",
-            "messages": [{"role": "user", "content": prompt_text}]
-        }
+                phrases = None
+                if isinstance(parsed, list):
+                    phrases = parsed
+                elif isinstance(parsed, dict):
+                    for k in ["phrases", "script", "bulletin", "cards", "sentences"]:
+                        if k in parsed and isinstance(parsed[k], list):
+                            phrases = parsed[k]
+                            break
+                    if not phrases:
+                        for v in parsed.values():
+                            if isinstance(v, list):
+                                phrases = v
+                                break
 
-    req = urllib.request.Request(
-        "https://openrouter.ai/api/v1/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    )
+                if isinstance(phrases, list) and len(phrases) == len(cards):
+                    log(f"✅ Script oral {mode.upper()} rédigé avec succès par Gemini 2.5 Flash ({len(phrases)} phrases) !")
+                    return phrases
+                else:
+                    log(f"⚠️ Nombre de phrases inattendu ({len(phrases) if isinstance(phrases, list) else 'non-liste'}) vs {len(cards)} cartes")
 
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            raw = data["choices"][0]["message"]["content"].strip()
-            # Nettoyage des balises markdown éventuelles
-            if "```" in raw:
-                parts = raw.split("```")
-                raw = parts[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-                raw = raw.strip()
-
-            # Nettoyer les backslashes invalides avant les caractères comme les apostrophes
-            raw_cleaned = re.sub(r'\\([^"\\/bfnrtu])', r'\1', raw)
-
-            try:
-                phrases = json.loads(raw_cleaned, strict=False)
-            except Exception:
-                phrases = json.loads(raw, strict=False)
-
-            if isinstance(phrases, list) and len(phrases) == len(cards):
-                log("✅ Script oral enrichi et détaillé (démarrant à J+1) généré instantanément !")
-                return phrases
-            else:
-                log(f"⚠️ Nombre de phrases inattendu ({len(phrases) if isinstance(phrases, list) else 'non-liste'}) vs {len(cards)} cartes")
-
-    except Exception as e:
-        log(f"⚠️ Erreur génération script texte : {e}")
+        except Exception as e:
+            log(f"⚠️ Erreur génération script IA ({e}) -> Utilisation du script de secours")
 
     # Fallback propre à J+1
-    return [
-        f"Bonjour à tous ! Demain matin, réveil calme et contrasté sur {zone_title}.",
-        f"Pour votre après-midi de demain, le temps s'annonce agréable avec de belles éclaircies.",
-        f"Dimanche, une très belle journée lumineuse et agréable pour vos sorties.",
-        f"Lundi, quelques passages nuageux et ondées locales par l'ouest.",
-        f"Mardi, retour d'une grande douceur généralisée sous un ciel clément.",
-        f"Mercredi, ciel partagé avec quelques averses passagères.",
-        f"Jeudi, atmosphère plus fraîche et nébulosité de saison.",
-        f"Vendredi prochain, poursuite de conditions automnales calmes.",
-        "Très belle journée à tous et excellente suite de vos programmes avec Météo-Climat Pro !"
-    ]
+    log(f"ℹ️ Utilisation du fallback statique sécurisé ({mode})")
+    if mode == "btp":
+        return [
+            f"Voici votre bulletin météo BTP. On commence dès demain matin sur {zone_title} sous des conditions globalement calmes et favorables au démarrage des chantiers.",
+            "Pour votre après-midi de demain, le temps restera sec et bien ensoleillé, idéal pour la poursuite des travaux extérieurs et le terrassement.",
+            "Dimanche, une météo stable et clémente permettra de maintenir vos installations en toute sécurité avant la reprise de la semaine.",
+            "Lundi, quelques passages nuageux et ondées locales par l'ouest : surveillez les sols glissants et l'adhérence des engins.",
+            "Mardi, retour d'une grande douceur généralisée sous un ciel lumineux, attention à l'exposition au soleil des équipes en plein air.",
+            "Mercredi, ciel plus chargé avec de probables averses orageuses, pensez à bâcher vos matériaux sensibles à l'humidité.",
+            "Jeudi, atmosphère plus fraîche et vent modéré : vérifiez l'amarrage de vos échafaudages et la prise au vent des grues.",
+            "Vendredi prochain, poursuite de conditions de saison, propices à la finalisation de vos plannings de travaux.",
+            "En conclusion, restez vigilants sur l'évolution du vent et les averses. Excellente fin de semaine et prenez soin de vos équipes avec Météo BTP et Météo-Climat Pro !"
+        ]
+    else:
+        return [
+            f"Bonjour à tous, bienvenue pour votre bulletin météo national. On commence dès demain matin sur {zone_title} avec un réveil calme et agréable.",
+            "Pour votre après-midi de demain, le soleil s'imposera très largement avec des températures idéales pour vos activités extérieures et promenades.",
+            "Dimanche, une très belle journée lumineuse et douce s'annonce sur l'ensemble de vos régions pour clore le week-end.",
+            "Lundi, quelques passages nuageux et ondées locales glisseront par l'ouest tandis que la douceur persistera ailleurs.",
+            "Mardi, retour d'un bel ensoleillement généralisé sous un air particulièrement agréable pour la saison.",
+            "Mercredi, ciel partagé avec quelques averses passagères et un thermomètre qui restera de saison.",
+            "Jeudi, atmosphère plus fraîche et nébulosité automnale, prévoyez un vêtement plus chaud pour vos sorties.",
+            "Vendredi prochain, poursuite de conditions calmes avec de belles éclaircies après dissipation des brumes matinales.",
+            "En résumé, profitez pleinement de cette météo agréable au fil des jours. Merci de votre fidélité et excellente suite de vos programmes avec Météo-Climat Pro !"
+        ]
 
 def clean_for_speech(text):
     """Bannit formellement la prononciation du mot 'celsius' et nettoie les symboles"""

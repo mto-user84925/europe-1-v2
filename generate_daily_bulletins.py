@@ -22,6 +22,7 @@ from generate_tiktok_bulletins import (
     compile_video,
     check_encoder,
     get_api_key,
+    generate_script_from_data,
     log
 )
 
@@ -178,11 +179,23 @@ def main():
     output_dir = args.output_dir if args.output_dir else os.path.join(cur_dir, "output_bulletins")
     os.makedirs(output_dir, exist_ok=True)
 
+    cards = collect_cards("france", maps_dir, orientation="landscape")
+
     if args.mode in ["grand_public", "both"]:
-        generate_bulletin_pair("grand_public", SCRIPT_GRAND_PUBLIC, output_dir, maps_dir, music_path, api_key)
+        log("🧠 Rédaction du script Grand Public par l'IA (Gemini 2.5 Flash)...")
+        script_gp = generate_script_from_data("france", cards, api_key, maps_dir, mode="grand_public")
+        if not script_gp:
+            log("⚠️ Fallback script Grand Public de secours")
+            script_gp = SCRIPT_GRAND_PUBLIC
+        generate_bulletin_pair("grand_public", script_gp, output_dir, maps_dir, music_path, api_key)
 
     if args.mode in ["btp", "both"]:
-        generate_bulletin_pair("btp", SCRIPT_BTP, output_dir, maps_dir, music_path, api_key)
+        log("🧠 Rédaction du script BTP Pro par l'IA (Gemini 2.5 Flash)...")
+        script_btp = generate_script_from_data("france", cards, api_key, maps_dir, mode="btp")
+        if not script_btp:
+            log("⚠️ Fallback script BTP de secours")
+            script_btp = SCRIPT_BTP
+        generate_bulletin_pair("btp", script_btp, output_dir, maps_dir, music_path, api_key)
 
 if __name__ == "__main__":
     main()
