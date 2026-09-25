@@ -84,3 +84,13 @@ jobs:
             --title "Bulletins Météo France (Paysage & TikTok) - $(date '+%d/%m/%Y')" \
             --notes "Bulletins météo officiels France à J+1 (Format Paysage 16:9 broadcast + Format TikTok 9:16). Générés automatiquement le $(date '+%d/%m/%Y à %Hh%M')." \
             --latest
+
+      - name: 9. Envoyer l'e-mail de notification avec liens directs
+        env:
+          PYTHONUNBUFFERED: "1"
+          SFR_EMAIL: ${{ secrets.SFR_EMAIL }}
+          SFR_PASSWORD: ${{ secrets.SFR_PASSWORD }}
+        run: |
+          MODE="${{ github.event.inputs.mode || 'grand_public' }}"
+          python send_bulletins_email.py "$MODE"
+
