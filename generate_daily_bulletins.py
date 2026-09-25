@@ -182,7 +182,7 @@ def main():
     cards = collect_cards("france", maps_dir, orientation="landscape")
 
     if args.mode in ["grand_public", "both"]:
-        log("🧠 Rédaction du script Grand Public par l'IA (Gemini 2.5 Flash)...")
+        log("🧠 Rédaction du script Grand Public par l'IA (Gemini 3.6 Flash)...")
         script_gp = generate_script_from_data("france", cards, api_key, maps_dir, mode="grand_public")
         if not script_gp:
             log("⚠️ Fallback script Grand Public de secours")
@@ -190,7 +190,7 @@ def main():
         generate_bulletin_pair("grand_public", script_gp, output_dir, maps_dir, music_path, api_key)
 
     if args.mode in ["btp", "both"]:
-        log("🧠 Rédaction du script BTP Pro par l'IA (Gemini 2.5 Flash)...")
+        log("🧠 Rédaction du script BTP Pro par l'IA (Gemini 3.6 Flash)...")
         script_btp = generate_script_from_data("france", cards, api_key, maps_dir, mode="btp")
         if not script_btp:
             log("⚠️ Fallback script BTP de secours")

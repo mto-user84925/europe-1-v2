@@ -354,7 +354,7 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
         summary_lines = [f"- 7 jours de prévisions à partir de demain sur {zone_title}"]
 
     if mode == "btp":
-        persona = "Tu es Patrick Marlière, météorologue expert officiel pour Météo-Climat Pro et Météo BTP."
+        persona = "Tu es un présentateur météo professionnel expert pour Météo BTP et Météo-Climat Pro."
         audience = f"un bulletin météo TV broadcast professionnel de très haute précision technique, destiné aux professionnels du BTP (chefs de chantier, artisans, conducteurs de travaux, compagnons) pour {zone_title}."
         intro_rule = 'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP. On commence dès demain matin, [Nom du jour et date, ex: samedi 26 septembre], avec..."'
         specific_rules = """5. PRÉCISION VENT ET RAFALES BTP :
@@ -363,7 +363,7 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
    - Relie les conditions météo aux chantiers : coulage béton, séchage, terrassement, étanchéité, hydratation des ouvriers si forte chaleur."""
         phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
     else:
-        persona = "Tu es Patrick Marlière, présentateur météorologue officiel pour Météo-Climat Pro."
+        persona = "Tu es un présentateur météorologue officiel pour Météo-Climat Pro."
         audience = f"le bulletin météo national grand public officiel, destiné aux téléspectateurs pour la météo au quotidien, les activités extérieures et les prévisions de la semaine pour {zone_title}."
         intro_rule = 'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo national. On commence dès demain matin, [Nom du jour et date, ex: samedi 26 septembre], avec..."'
         specific_rules = """5. CONSEILS GRAND PUBLIC & SORTIES :
@@ -381,12 +381,14 @@ Voici la fiche technique DÉTAILLÉE CARTE PAR CARTE (les températures indiqué
 EXIGENCES ÉDITORIALES DE HAUTE PRÉCISION :
 1. ACCROCHE TV NATURELLE ET FLUIDE (OBLIGATOIRE) :
    - {intro_rule}
-2. COHÉRENCE TOTALE AVEC LES CARTES (RÈGLE INVIOLABLE) :
+2. INTERDICTION FORMELLE DE CITER DES NOMS DE PERSONNES (RÈGLE INVIOLABLE) :
+   - Ne dis JAMAIS "Patrick Marlière", "Patrick" ni aucun nom de présentateur ! Tu ne te présentes JAMAIS sous un nom personnel. Le bulletin est anonyme et signé uniquement par "Météo-Climat Pro" et "Météo BTP".
+3. COHÉRENCE TOTALE AVEC LES CARTES (RÈGLE INVIOLABLE) :
    - CARTE 1 (matin) : cite UNIQUEMENT les températures matinales indiquées sous la CARTE 1 !
    - CARTES 2 à 8 (après-midi) : cite UNIQUEMENT les températures de l'après-midi indiquées sous chaque carte ! Ne cite JAMAIS une température matinale sur une carte d'après-midi.
-3. BAN ABSOLU DU MOT 'CELSIUS' (RÈGLE INVIOLABLE) :
+4. BAN ABSOLU DU MOT 'CELSIUS' (RÈGLE INVIOLABLE) :
    - Ne dis JAMAIS "degrés Celsius" ni "Celsius" ! Dis uniquement "degrés" ou le chiffre brut (ex: "6 degrés", "25 degrés"). N'écris jamais le symbole °C.
-4. CITATION SYSTÉMATIQUE DES EXTRÊMES SUR CHAQUE CARTE :
+5. CITATION SYSTÉMATIQUE DES EXTRÊMES SUR CHAQUE CARTE :
    - Sur CHAQUE carte 1 à 8, cite obligatoirement la ville la plus fraîche et la ville la plus chaude.
 {specific_rules}
 7. LONGUEUR PAR PHRASE :
@@ -403,9 +405,9 @@ Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le
 
     if api_key:
         try:
-            log(f"🧠 Appel IA (Gemini 2.5 Flash via OpenRouter) pour rédaction dynamique du script ({mode.upper()})...")
+            log(f"🧠 Appel IA (Gemini 3.6 Flash via OpenRouter) pour rédaction dynamique du script ({mode.upper()})...")
             payload = {
-                "model": "google/gemini-2.5-flash",
+                "model": "google/gemini-3.6-flash",
                 "messages": [{"role": "user", "content": prompt_text}],
                 "response_format": {"type": "json_object"}
             }
@@ -451,7 +453,7 @@ Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le
                                 break
 
                 if isinstance(phrases, list) and len(phrases) == len(cards):
-                    log(f"✅ Script oral {mode.upper()} rédigé avec succès par Gemini 2.5 Flash ({len(phrases)} phrases) !")
+                    log(f"✅ Script oral {mode.upper()} rédigé avec succès par Gemini 3.6 Flash ({len(phrases)} phrases) !")
                     return phrases
                 else:
                     log(f"⚠️ Nombre de phrases inattendu ({len(phrases) if isinstance(phrases, list) else 'non-liste'}) vs {len(cards)} cartes")
@@ -487,13 +489,17 @@ Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le
         ]
 
 def clean_for_speech(text):
-    """Bannit formellement la prononciation du mot 'celsius' et nettoie les symboles"""
-    t = re.sub(r'°C\b', ' degrés', text)
+    """Bannit formellement la prononciation du mot 'celsius', le nom 'Patrick Marlière', et nettoie les symboles"""
+    # RÈGLE ABSOLUE : Zéro mention de nom propre (Patrick Marlière / Patrick)
+    t = re.sub(r"\b(C['’]était\s+)?Patrick\s+Marli[èe]re\b", "", text, flags=re.IGNORECASE)
+    t = re.sub(r"\b(c['’]était\s+)?Patrick\b", "", t, flags=re.IGNORECASE)
+    t = re.sub(r'°C\b', ' degrés', t)
     t = re.sub(r'°\b', ' degrés', t)
     t = re.sub(r'degrés\s+[cC]elsius', 'degrés', t)
     t = re.sub(r'degré\s+[cC]elsius', 'degré', t)
     t = re.sub(r'\b[cC]elsius\b', '', t)
     t = t.replace('°C', ' degrés').replace('°', ' degrés')
+    t = re.sub(r'\s+', ' ', t)
     return t.strip()
 
 def tts_charon(text, output_wav, api_key):
@@ -509,7 +515,7 @@ def tts_charon(text, output_wav, api_key):
                 "input": clean_text,
                 "voice": "Charon",
                 "language": "fr-FR",
-                "instructions": "Voix de présentateur météo professionnel expert pour le secteur du BTP et grand public. Prononciation avec un accent français métropolitain standard (parisien), diction parfaitement articulée sur les noms de villes françaises et régionales (notamment Ajaccio prononcé [a-jak-sio], Bastia, etc.), ton dynamique, direct, sérieux et chaleureux, sans aucun accent étranger. Ne prononce JAMAIS le mot 'celsius', dis toujours 'degrés'."
+                "instructions": "Voix de présentateur météo professionnel expert pour le secteur du BTP et grand public. Prononciation avec un accent français métropolitain standard (parisien), diction parfaitement articulée sur les noms de villes françaises et régionales (notamment Ajaccio prononcé [a-jak-sio], Bastia, etc.), ton dynamique, direct, sérieux et chaleureux, sans aucun accent étranger. Ne prononce JAMAIS le mot 'celsius', dis toujours 'degrés'. Ne cite JAMAIS aucun nom personnel ni Patrick Marlière."
             }
             req = urllib.request.Request(
                 url,
