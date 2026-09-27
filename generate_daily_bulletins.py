@@ -174,7 +174,7 @@ def main():
     api_key = get_api_key()
     # ponytail: cur_dir en priorité → find_forecast_csv trouvera le CSV généré dans le même dossier sur GitHub Actions
     cur_dir = os.path.dirname(os.path.abspath(__file__))
-    maps_dir = find_maps_dir(cur_dir)
+    maps_dir = find_maps_dir()
     music_path = find_music_path()
 
     output_dir = args.output_dir if args.output_dir else os.path.join(cur_dir, "output_bulletins")

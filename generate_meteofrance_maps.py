@@ -632,6 +632,7 @@ def main():
     
     now = datetime.now()
     default_start_tomorrow = True
+    parser.add_argument("--start-tomorrow", action="store_true", default=default_start_tomorrow, help="Commencer les prévisions à partir de demain au lieu d'aujourd'hui")
     parser.add_argument("--day-offset", type=int, default=None, help="Décalage du jour de départ (ex: 2 pour mardi)")
     parser.add_argument("--temp-highlight", action="store_true", help="Mise en avant min/max des températures (bleu min, rouge max, noir pour le reste)")
     parser.add_argument("--patrick", action="store_true", help="Générer les cartes spécifiques pour le Bulletin Patrick")

@@ -68,16 +68,30 @@ ENCODER = check_encoder()
 
 def find_maps_dir(custom_path=None):
     if custom_path and os.path.exists(custom_path):
-        return custom_path
+        try:
+            if any(f.startswith("carte") for f in os.listdir(custom_path)):
+                return custom_path
+        except Exception:
+            pass
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
         r"C:\Users\grego\Desktop\cartes_alertes",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "cartes_alertes"),
-        os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cartes_alertes"))
+        os.path.abspath(os.path.join(cur_dir, "..", "cartes_alertes")),
+        os.path.join(cur_dir, "cartes_alertes"),
+        cur_dir
     ]
     for c in candidates:
         if os.path.exists(c):
+            try:
+                if any(f.startswith("carte") for f in os.listdir(c)):
+                    return c
+            except Exception:
+                pass
+    # Fallback si aucun ne contient de carte pour l'instant
+    for c in candidates[:3]:
+        if os.path.exists(c):
             return c
-    loc = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cartes_alertes")
+    loc = os.path.abspath(os.path.join(cur_dir, "..", "cartes_alertes"))
     os.makedirs(loc, exist_ok=True)
     return loc
 
@@ -530,11 +544,15 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
 
                 # Villes de référence supplémentaires par bassin
                 other_reps = []
+                if zone == "france":
+                    p_info = exact.get("PARIS") or exact.get("Paris")
+                    if p_info:
+                        other_reps.append(f"PARIS ({p_info['temp']} degrés, {p_info['label'].lower()})")
                 pool = regional_pools[card_num % len(regional_pools)]
                 for c in pool:
-                    if c in exact and c != "Blois":
+                    if c in exact and c not in ["Blois", "PARIS", "Paris"]:
                         other_reps.append(f"{c} ({exact[c]['temp']} degrés, {exact[c]['label'].lower()})")
-                other_str = f" | Autres repères : {', '.join(other_reps[:3])}" if other_reps else ""
+                other_str = f" | Autres repères : {', '.join(other_reps[:4])}" if other_reps else ""
 
                 summary_lines.append(
                     f"- CARTE {card_num} ({date_label.upper()} {period_label}) : "
