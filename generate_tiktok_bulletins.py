@@ -174,6 +174,92 @@ def find_forecast_csv(zone, maps_dir):
             return c
     return None
 
+def find_data_json(zone, maps_dir):
+    """Trouve le fichier JSON des données météo horaires/quotidiennes généré par Météo-France"""
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    fname = f"meteofrance_data_{zone}.json" if zone not in ["france", "france_pictos"] else "meteofrance_data.json"
+    candidates = [
+        os.path.join(maps_dir, fname) if maps_dir else None,
+        r"C:\Users\grego\Desktop\cartes_alertes" + "\\" + fname,
+        os.path.join(cur_dir, fname),
+        r"C:\Users\grego\Documents\METEO_CLIMAT\meteo cnews 2" + "\\" + fname,
+        os.path.join(cur_dir, "meteofrance_data.json"),
+        os.path.join(maps_dir, "meteofrance_data.json") if maps_dir else None
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+WEATHER_LABELS = {
+    0: 'SOLEIL', 1: 'PEU NUAGEUX', 2: 'NUAGEUX', 3: 'TRÈS NUAGEUX',
+    4: 'COUVERT', 5: 'SOLEIL VOILÉ', 6: 'AVERSES', 7: 'PLUIES FAIBLES',
+    8: 'FORTES PLUIES', 9: 'GRÊLE', 10: 'ORAGES', 11: 'ORAGES + GRÊLE', 12: 'BROUILLARD'
+}
+
+def get_exact_leaflet_weather(zone_data, cities_list, day_idx, period):
+    hours = [8, 9, 10] if period == 'morning' else [14, 15, 16]
+    result = {}
+    for idx, loc in enumerate(zone_data):
+        if idx >= len(cities_list):
+            break
+        cname = cities_list[idx]
+        h_codes = loc.get('hourly', {}).get('weathercode', [])
+        window_codes = [h_codes[day_idx * 24 + h] for h in hours if (day_idx * 24 + h) < len(h_codes)]
+        if not window_codes:
+            window_codes = [0]
+        severe = [c for c in window_codes if c >= 6]
+        if severe:
+            prio = [11, 10, 9, 8, 7, 6, 12]
+            severe.sort(key=lambda c: prio.index(c) if c in prio else 99)
+            final_code = severe[0]
+        else:
+            counts = {c: window_codes.count(c) for c in set(window_codes)}
+            max_c = max(counts.values())
+            candidates = [c for c, cnt in counts.items() if cnt == max_c]
+            tie_prio = [4, 3, 2, 1, 5, 0]
+            candidates.sort(key=lambda c: tie_prio.index(c) if c in tie_prio else 99)
+            final_code = candidates[0]
+        if period == 'morning':
+            t_val = loc.get('daily', {}).get('temperature_2m_min', [12]*7)[day_idx]
+        else:
+            t_val = loc.get('daily', {}).get('temperature_2m_max', [22]*7)[day_idx]
+        t_deg = int(math.floor(float(t_val) + 0.5))
+        result[cname] = {'label': WEATHER_LABELS.get(final_code, 'SOLEIL'), 'temp': t_deg}
+    return result
+
+def format_card_spatial_summary(zone, exact_data):
+    total = len(exact_data)
+    rain_cities = [(c, info['temp'], info['label']) for c, info in exact_data.items() if any(k in info['label'] for k in ['PLUIE', 'AVERSE', 'ORAGE'])]
+    cloud_cities = [(c, info['temp'], info['label']) for c, info in exact_data.items() if any(k in info['label'] for k in ['NUAGEUX', 'COUVERT'])]
+    sun_cities = [(c, info['temp'], info['label']) for c, info in exact_data.items() if 'SOLEIL' in info['label']]
+    min_city, min_info = min(exact_data.items(), key=lambda x: x[1]['temp'])
+    max_city, max_info = max(exact_data.items(), key=lambda x: x[1]['temp'])
+    blois_info = exact_data.get('Blois')
+    blois_text = f"BLOIS : {blois_info['temp']} degrés sous un ciel {blois_info['label'].lower()}." if blois_info else ""
+
+    if len(rain_cities) == 0:
+        if len(cloud_cities) >= len(sun_cities):
+            vis_desc = f"Ciel nuageux et couvert mais SEC sur l'ensemble des {total} communes (aucune pluie). {blois_text}"
+        else:
+            vis_desc = f"Plein soleil radieux et SEC sur l'ensemble des {total} communes (aucune pluie). {blois_text}"
+    elif len(rain_cities) < total:
+        rain_str = ", ".join(f"{c} ({t} degrés, {lbl.lower()})" for c, t, lbl in rain_cities)
+        dry_type = "nuageux" if len(cloud_cities) >= len(sun_cities) else "ensoleillé"
+        vis_desc = (
+            f"⚠️ CONTRASTE SPATIAL MARQUÉ : Averses/pluies localisées UNIQUEMENT sur {len(rain_cities)}/{total} communes : [{rain_str}]. "
+            f"Tout le reste de la région ({total - len(rain_cities)} communes) reste parfaitement sec sous un ciel {dry_type} ! "
+            f"INTERDICTION FORMELLE de généraliser la pluie ! {blois_text}"
+        )
+    else:
+        vis_desc = f"Pluies ou averses généralisées sur les {total} communes. {blois_text}"
+
+    return {
+        "vis_desc": vis_desc,
+        "f_city": f"{min_city} ({min_info['temp']} degrés)",
+        "c_city": f"{max_city} ({max_info['temp']} degrés)",
+    }
+
 def load_hourly_btp_stats(zone, maps_dir):
     """Extrait du CSV horaire les rafales maximales et les cumuls de pluie par date pour le BTP"""
     cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -339,15 +425,30 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
     else:
         zone_title = f"la région {zone.upper()}"
     csv_file = find_forecast_csv(zone, maps_dir)
+    json_file = find_data_json(zone, maps_dir)
     hourly_stats = load_hourly_btp_stats(zone, maps_dir)
 
+    zone_data = None
+    if json_file:
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                zone_data = json.load(f)
+            log(f"🗺️ Données JSON Leaflet chargées depuis {os.path.basename(json_file)} ({len(zone_data)} communes)")
+        except Exception as e:
+            log(f"⚠️ Erreur chargement JSON Leaflet : {e}")
+
     summary_lines = []
+    target_dates = []
     if csv_file and os.path.exists(csv_file):
         log(f"📊 Lecture des prévisions officielles dans {os.path.basename(csv_file)} (COMMENCE À J+1)...")
+        cities = []
         data_by_date = {}
         with open(csv_file, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f, delimiter=";")
             for row in reader:
+                v = row.get("Ville", "").strip()
+                if v and v not in cities:
+                    cities.append(v)
                 d = row.get("Date", "")
                 if d not in data_by_date:
                     data_by_date[d] = []
@@ -386,47 +487,26 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             ]
 
         french_days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
-        for idx, d in enumerate(target_dates):
-            rows = data_by_date[d]
-            rows_dict = {r.get("Ville", "").strip(): r for r in rows}
+        card_configs = [
+            (1, 0, "morning", "MATIN"),
+            (2, 0, "afternoon", "APRÈS-MIDI"),
+            (3, 1, "afternoon", "APRÈS-MIDI"),
+            (4, 2, "afternoon", "APRÈS-MIDI"),
+            (5, 3, "afternoon", "APRÈS-MIDI"),
+            (6, 4, "afternoon", "APRÈS-MIDI"),
+            (7, 5, "afternoon", "APRÈS-MIDI"),
+            (8, 6, "afternoon", "APRÈS-MIDI"),
+        ]
 
-            # Extrêmes stricts (ville la plus basse et ville la plus haute)
-            row_min_matin = min(rows, key=lambda r: float(r.get("temperature_2m_min", 99)))
-            row_max_matin = max(rows, key=lambda r: float(r.get("temperature_2m_min", -99)))
-            row_min_aprem = min(rows, key=lambda r: float(r.get("temperature_2m_max", 99)))
-            row_max_aprem = max(rows, key=lambda r: float(r.get("temperature_2m_max", -99)))
-
-            # Rotation des villes par bassin
-            selected_rows = []
-            for pool_idx, pool in enumerate(regional_pools):
-                city_name = pool[(idx + pool_idx) % len(pool)]
-                if city_name in rows_dict:
-                    selected_rows.append(rows_dict[city_name])
-
-            temps_list = list(dict.fromkeys(r.get("Temps_Label", "") for r in rows if r.get("Temps_Label")))
-            temps_str = ", ".join(temps_list[:3]) if temps_list else "Variable"
-
+        for card_num, day_idx, period, period_label in card_configs:
+            if day_idx >= len(target_dates):
+                continue
+            d = target_dates[day_idx]
             try:
                 dt = datetime.strptime(d, "%d/%m/%Y")
-                day_name = french_days[dt.weekday()]
-                date_label = f"{day_name} {dt.day}"
+                date_label = f"{french_days[dt.weekday()]} {dt.day}"
             except Exception:
                 date_label = d
-
-            # Formatage clair sans "°C" avec arrondi arithmétique identique aux cartes Leaflet (Math.round)
-            def fmt_deg(val, default_val=15):
-                try:
-                    return str(int(math.floor(float(val) + 0.5)))
-                except Exception:
-                    return str(default_val)
-
-            f_matin = f"{row_min_matin.get('Ville','')} ({fmt_deg(row_min_matin.get('temperature_2m_min'), 10)} degrés)"
-            d_matin = f"{row_max_matin.get('Ville','')} ({fmt_deg(row_max_matin.get('temperature_2m_min'), 18)} degrés)"
-            f_aprem = f"{row_min_aprem.get('Ville','')} ({fmt_deg(row_min_aprem.get('temperature_2m_max'), 18)} degrés)"
-            c_aprem = f"{row_max_aprem.get('Ville','')} ({fmt_deg(row_max_aprem.get('temperature_2m_max'), 30)} degrés)"
-
-            other_cities_aprem = [f"{r.get('Ville','')}: {fmt_deg(r.get('temperature_2m_max'), 20)} degrés" for r in selected_rows[:3]]
-            other_cities_matin = [f"{r.get('Ville','')}: {fmt_deg(r.get('temperature_2m_min'), 12)} degrés" for r in selected_rows[:3]]
 
             # Données de vent et pluie horaires réelles
             h_stat = hourly_stats.get(d, {})
@@ -444,30 +524,34 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             else:
                 pluie_detail = " | PLUIE : temps sec"
 
-            # Analyse spatiale et contrastes géographiques
-            spatial_weather = analyze_spatial_weather(zone, rows)
+            if zone_data and cities:
+                exact = get_exact_leaflet_weather(zone_data, cities, day_idx, period)
+                c_summary = format_card_spatial_summary(zone, exact)
 
-            # Pour J1 (première date), on génère deux entrées : Carte 1 (Matin) et Carte 2 (Après-midi)
-            if idx == 0:
+                # Villes de référence supplémentaires par bassin
+                other_reps = []
+                pool = regional_pools[card_num % len(regional_pools)]
+                for c in pool:
+                    if c in exact and c != "Blois":
+                        other_reps.append(f"{c} ({exact[c]['temp']} degrés, {exact[c]['label'].lower()})")
+                other_str = f" | Autres repères : {', '.join(other_reps[:3])}" if other_reps else ""
+
                 summary_lines.append(
-                    f"- CARTE 1 ({date_label.upper()} MATIN) : ATTENTION, cette carte affiche STRICTEMENT les températures du MATIN. "
-                    f"Répartition visuelle : {spatial_weather}{vent_detail} | "
-                    f"Sur cette carte matinale : la ville la plus fraîche = {f_matin}, la plus douce = {d_matin} | "
-                    f"Autres repères matinaux : {', '.join(other_cities_matin)}"
-                )
-                summary_lines.append(
-                    f"- CARTE 2 ({date_label.upper()} APRÈS-MIDI) : ATTENTION, cette carte affiche STRICTEMENT les températures de l'APRÈS-MIDI. "
-                    f"Répartition visuelle : {spatial_weather}{vent_detail}{pluie_detail} | "
-                    f"Sur cette carte d'après-midi : la ville la plus fraîche = {f_aprem}, la plus chaude = {c_aprem} | "
-                    f"Autres repères de l'après-midi : {', '.join(other_cities_aprem)}"
+                    f"- CARTE {card_num} ({date_label.upper()} {period_label}) : "
+                    f"Répartition visuelle : {c_summary['vis_desc']}{vent_detail}{pluie_detail} | "
+                    f"Sur cette carte : la commune la plus fraîche = {c_summary['f_city']}, la plus chaude = {c_summary['c_city']}{other_str}"
                 )
             else:
-                card_num = idx + 2
+                rows = data_by_date[d]
+                row_min = min(rows, key=lambda r: float(r.get("temperature_2m_min" if period == "morning" else "temperature_2m_max", 99)))
+                row_max = max(rows, key=lambda r: float(r.get("temperature_2m_min" if period == "morning" else "temperature_2m_max", -99)))
+                spatial_weather = analyze_spatial_weather(zone, rows)
+                f_temp = row_min.get("temperature_2m_min" if period == "morning" else "temperature_2m_max", 15)
+                c_temp = row_max.get("temperature_2m_min" if period == "morning" else "temperature_2m_max", 25)
                 summary_lines.append(
-                    f"- CARTE {card_num} ({date_label.upper()} APRÈS-MIDI) : ATTENTION, cette carte affiche STRICTEMENT les températures de l'APRÈS-MIDI. "
+                    f"- CARTE {card_num} ({date_label.upper()} {period_label}) : "
                     f"Répartition visuelle : {spatial_weather}{vent_detail}{pluie_detail} | "
-                    f"Sur cette carte d'après-midi : la ville la plus fraîche = {f_aprem}, la plus chaude = {c_aprem} | "
-                    f"Autres repères de l'après-midi : {', '.join(other_cities_aprem)}"
+                    f"Sur cette carte : la commune la plus fraîche = {row_min.get('Ville','')} ({f_temp} degrés), la plus chaude = {row_max.get('Ville','')} ({c_temp} degrés)"
                 )
     else:
         log("ℹ️ Fichier CSV non trouvé, utilisation des tendances...")
