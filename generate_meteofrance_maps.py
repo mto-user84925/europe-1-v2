@@ -290,20 +290,24 @@ def fetch_openmeteo_gusts(lat, lon, start_tomorrow=False, days=8):
         return None
 
 
-def fetch_all_openmeteo_gusts(cities_list, start_tomorrow=False, days=8):
+def fetch_all_openmeteo_gusts(cities_list, start_tomorrow=False, days=8, start_offset=None):
+    # ponytail: start_offset controls day shift (e.g. 2 for Tuesday); defaults to start_tomorrow
+    if start_offset is None:
+        start_offset = 1 if start_tomorrow else 0
     if not cities_list:
         return {}
     
     lats = ",".join(str(c['lat']) for c in cities_list)
     lons = ",".join(str(c['lon']) for c in cities_list)
     
+    total_days = min(days + start_offset, 16)
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lats}&longitude={lons}"
         f"&hourly=windspeed_10m,wind_gusts_10m,winddirection_10m"
         f"&wind_speed_unit=kmh"
         f"&timezone=Europe%2FParis"
-        f"&forecast_days={days}"
+        f"&forecast_days={total_days}"
     )
     print("DEBUG URL (Batch Wind):", url)
     
@@ -316,6 +320,8 @@ def fetch_all_openmeteo_gusts(cities_list, start_tomorrow=False, days=8):
         
         results = data if isinstance(data, list) else [data]
         target_len = days * 24
+        start_h = start_offset * 24
+        end_h = start_h + target_len
         for idx, r in enumerate(results):
             city = cities_list[idx]
             hourly_res = r.get('hourly', {})
@@ -328,9 +334,9 @@ def fetch_all_openmeteo_gusts(cities_list, start_tomorrow=False, days=8):
                     return [float(v if v is not None else def_val) for v in arr[:target_len]]
                 return [float(v if v is not None else def_val) for v in arr] + [def_val] * (target_len - len(arr))
 
-            final_gusts = pad_list(gusts, 0.0)
-            final_speeds = pad_list(speeds, 0.0)
-            final_dirs = pad_list(dirs, 180.0)
+            final_gusts = pad_list(gusts[start_h:end_h] if len(gusts) >= end_h else gusts[start_h:], 0.0)
+            final_speeds = pad_list(speeds[start_h:end_h] if len(speeds) >= end_h else speeds[start_h:], 0.0)
+            final_dirs = pad_list(dirs[start_h:end_h] if len(dirs) >= end_h else dirs[start_h:], 180.0)
             
             key = f"{round(float(city['lat']), 2)}_{round(float(city['lon']), 2)}"
             gusts_map[key] = {
@@ -347,7 +353,7 @@ def fetch_all_openmeteo_gusts(cities_list, start_tomorrow=False, days=8):
 
 
 
-def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None, days=8):
+def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None, days=8, start_offset=None):
     if not mf_data or 'properties' not in mf_data:
         return None
         
@@ -355,10 +361,13 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None, days=8):
     forecasts = prop.get('forecast', [])
     daily_forecasts = prop.get('daily_forecast', [])
     
+    # ponytail: start_offset takes precedence over boolean start_tomorrow
+    if start_offset is None:
+        start_offset = 1 if start_tomorrow else 0
+        
     now = datetime.now()
     start_of_today = datetime(now.year, now.month, now.day, 0, 0, 0)
-    if start_tomorrow:
-        start_of_today += timedelta(days=1)
+    start_of_today += timedelta(days=start_offset)
     
     hourly_times = []
     hourly_temp = []

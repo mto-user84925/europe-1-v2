@@ -25,6 +25,7 @@ import io
 import base64
 from PIL import Image
 from datetime import datetime
+import math
 
 FPS = 30
 
@@ -163,13 +164,13 @@ def find_forecast_csv(zone, maps_dir):
     cur_dir = os.path.dirname(os.path.abspath(__file__))
     fname = "meteofrance_daily_forecast_hdf.csv" if zone == "hdf" else "meteofrance_daily_forecast.csv"
     candidates = [
+        os.path.join(maps_dir, fname) if maps_dir else None,
+        r"C:\Users\grego\Desktop\cartes_alertes" + "\\" + fname,
         os.path.join(cur_dir, fname),
-        os.path.join(maps_dir, fname),
-        r"C:\Users\grego\Documents\METEO_CLIMAT\meteo cnews 2" + "\\" + fname,
-        r"C:\Users\grego\Desktop\cartes_alertes" + "\\" + fname
+        r"C:\Users\grego\Documents\METEO_CLIMAT\meteo cnews 2" + "\\" + fname
     ]
     for c in candidates:
-        if os.path.exists(c):
+        if c and os.path.exists(c):
             return c
     return None
 
@@ -178,14 +179,14 @@ def load_hourly_btp_stats(zone, maps_dir):
     cur_dir = os.path.dirname(os.path.abspath(__file__))
     fname = "meteofrance_hourly_forecast_hdf.csv" if zone == "hdf" else "meteofrance_hourly_forecast.csv"
     candidates = [
+        os.path.join(maps_dir, fname) if maps_dir else None,
+        r"C:\Users\grego\Desktop\cartes_alertes" + "\\" + fname,
         os.path.join(cur_dir, fname),
-        os.path.join(maps_dir, fname),
-        r"C:\Users\grego\Documents\METEO_CLIMAT\meteo cnews 2" + "\\" + fname,
-        r"C:\Users\grego\Desktop\cartes_alertes" + "\\" + fname
+        r"C:\Users\grego\Documents\METEO_CLIMAT\meteo cnews 2" + "\\" + fname
     ]
     p = None
     for c in candidates:
-        if os.path.exists(c):
+        if c and os.path.exists(c):
             p = c
             break
     if not p:
@@ -294,14 +295,14 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             try:
                 dt = datetime.strptime(d, "%d/%m/%Y")
                 day_name = french_days[dt.weekday()]
-                date_label = f"{day_name} {dt.day} ({'DEMAIN' if idx == 0 else f'J+{idx+1}'})"
+                date_label = f"{day_name} {dt.day}"
             except Exception:
                 date_label = d
 
             # Formatage clair sans "°C" avec arrondi arithmétique identique aux cartes Leaflet (Math.round)
             def fmt_deg(val, default_val=15):
                 try:
-                    return str(math.floor(float(val) + 0.5))
+                    return str(int(math.floor(float(val) + 0.5)))
                 except Exception:
                     return str(default_val)
 
@@ -316,8 +317,10 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             # Données de vent et pluie horaires réelles
             h_stat = hourly_stats.get(d, {})
             vent_detail = ""
-            if h_stat.get("max_gust", 0) >= 35:
-                vent_detail = f" | RAFALES : pic à {h_stat['max_gust']:.0f} km/h vers {h_stat['gust_city']}"
+            raw_gust = h_stat.get("max_gust", 0)
+            if raw_gust >= 35:
+                rounded_gust = int(round(raw_gust / 5.0) * 5)
+                vent_detail = f" | RAFALES : pic à {rounded_gust} km/h vers {h_stat['gust_city']} (arrondi strict de 5 en 5)"
             else:
                 vent_detail = " | VENT : calme sous 35 km/h"
 
@@ -327,16 +330,16 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             else:
                 pluie_detail = " | PLUIE : temps sec"
 
-            # Pour J+1, on génère deux entrées : Carte 1 (Matin) et Carte 2 (Après-midi)
+            # Pour J1 (première date), on génère deux entrées : Carte 1 (Matin) et Carte 2 (Après-midi)
             if idx == 0:
                 summary_lines.append(
-                    f"- CARTE 1 (DEMAIN MATIN {date_label}) : ATTENTION, cette carte affiche STRICTEMENT les températures du MATIN. "
+                    f"- CARTE 1 ({date_label.upper()} MATIN) : ATTENTION, cette carte affiche STRICTEMENT les températures du MATIN. "
                     f"Ciel = {temps_str}{vent_detail} | "
                     f"Sur cette carte matinale : la ville la plus fraîche = {f_matin}, la plus douce = {d_matin} | "
                     f"Autres repères matinaux : {', '.join(other_cities_matin)}"
                 )
                 summary_lines.append(
-                    f"- CARTE 2 (DEMAIN APRÈS-MIDI {date_label}) : ATTENTION, cette carte affiche STRICTEMENT les températures de l'APRÈS-MIDI. "
+                    f"- CARTE 2 ({date_label.upper()} APRÈS-MIDI) : ATTENTION, cette carte affiche STRICTEMENT les températures de l'APRÈS-MIDI. "
                     f"Ciel = {temps_str}{vent_detail}{pluie_detail} | "
                     f"Sur cette carte d'après-midi : la ville la plus fraîche = {f_aprem}, la plus chaude = {c_aprem} | "
                     f"Autres repères de l'après-midi : {', '.join(other_cities_aprem)}"
@@ -344,28 +347,39 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             else:
                 card_num = idx + 2
                 summary_lines.append(
-                    f"- CARTE {card_num} ({date_label} APRÈS-MIDI) : ATTENTION, cette carte affiche STRICTEMENT les températures de l'APRÈS-MIDI. "
+                    f"- CARTE {card_num} ({date_label.upper()} APRÈS-MIDI) : ATTENTION, cette carte affiche STRICTEMENT les températures de l'APRÈS-MIDI. "
                     f"Ciel = {temps_str}{vent_detail}{pluie_detail} | "
                     f"Sur cette carte d'après-midi : la ville la plus fraîche = {f_aprem}, la plus chaude = {c_aprem} | "
                     f"Autres repères de l'après-midi : {', '.join(other_cities_aprem)}"
                 )
     else:
         log("ℹ️ Fichier CSV non trouvé, utilisation des tendances...")
-        summary_lines = [f"- 7 jours de prévisions à partir de demain sur {zone_title}"]
+        summary_lines = [f"- 7 jours de prévisions sur {zone_title}"]
+
+    # ponytail: Dynamically determine starting label based on first target date
+    start_phrase_cue = "ce mardi matin 29 septembre"
+    if target_dates:
+        try:
+            d0_dt = datetime.strptime(target_dates[0], "%d/%m/%Y")
+            f_days = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+            f_months = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+            start_phrase_cue = f"ce {f_days[d0_dt.weekday()]} matin {d0_dt.day} {f_months[d0_dt.month-1]}"
+        except Exception:
+            pass
 
     if mode == "btp":
         persona = "Tu es un présentateur météo professionnel expert pour Météo BTP et Météo-Climat Pro."
         audience = f"un bulletin météo TV broadcast professionnel de très haute précision technique, destiné aux professionnels du BTP (chefs de chantier, artisans, conducteurs de travaux, compagnons) pour {zone_title}."
-        intro_rule = 'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP. On commence dès demain matin, [Nom du jour et date, ex: samedi 26 septembre], avec..."'
+        intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP. On commence {start_phrase_cue}, avec..."'
         specific_rules = """5. PRÉCISION VENT ET RAFALES BTP :
-   - Dès que des rafales >= 40-50 km/h apparaissent, cite la vitesse en km/h et la ville avec le conseil sécurité BTP (arrêt des grues, échafaudages, travaux en hauteur).
+   - Les rafales DOIVENT TOUJOURS être citées au multiple de 5 le plus proche (ex: 45, 50, 55, 60, 65, 70, 75 km/h). Utilise STRICTEMENT la valeur arrondie indiquée sous chaque carte !
 6. CONSEILS MÉTIERS BTP :
-   - Relie les conditions météo aux chantiers : coulage béton, séchage, terrassement, étanchéité, hydratation des ouvriers si forte chaleur."""
+   - Relie les conditions météo aux chantiers : coulage béton, séchage, terrassement, étanchéité, hydratation des ouvriers si forte chaleur, arrêt des grues et sécurisation des échafaudages."""
         phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
     else:
         persona = "Tu es un présentateur météorologue officiel pour Météo-Climat Pro."
         audience = f"le bulletin météo national grand public officiel, destiné aux téléspectateurs pour la météo au quotidien, les activités extérieures et les prévisions de la semaine pour {zone_title}."
-        intro_rule = 'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo national. On commence dès demain matin, [Nom du jour et date, ex: samedi 26 septembre], avec..."'
+        intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo national. On commence {start_phrase_cue}, avec..."'
         specific_rules = """5. CONSEILS GRAND PUBLIC & SORTIES :
    - Décris l'ambiance météo de manière vivante (soleil, éclaircies, parapluie nécessaire ou non, ressenti doux ou frais).
    - Donne des conseils pour les sorties, activités de plein air et le week-end."""
@@ -373,7 +387,7 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
 
     prompt_text = f"""{persona}
 Tu rédiges le script oral complet d'{audience}
-RÈGLE ABSOLUE : Le bulletin commence TOUJOURS à J+1 (DEMAIN).
+RÈGLE ABSOLUE : Le bulletin commence {start_phrase_cue}.
 
 Voici la fiche technique DÉTAILLÉE CARTE PAR CARTE (les températures indiquées correspondent EXACTEMENT aux chiffres dessinés sur chaque carte) :
 {chr(10).join(summary_lines)}
@@ -383,13 +397,12 @@ EXIGENCES ÉDITORIALES DE HAUTE PRÉCISION :
    - {intro_rule}
 2. INTERDICTION FORMELLE DE CITER DES NOMS DE PERSONNES (RÈGLE INVIOLABLE) :
    - Ne dis JAMAIS "Patrick Marlière", "Patrick" ni aucun nom de présentateur ! Tu ne te présentes JAMAIS sous un nom personnel. Le bulletin est anonyme et signé uniquement par "Météo-Climat Pro" et "Météo BTP".
-3. COHÉRENCE TOTALE AVEC LES CARTES (RÈGLE INVIOLABLE) :
-   - CARTE 1 (matin) : cite UNIQUEMENT les températures matinales indiquées sous la CARTE 1 !
-   - CARTES 2 à 8 (après-midi) : cite UNIQUEMENT les températures de l'après-midi indiquées sous chaque carte ! Ne cite JAMAIS une température matinale sur une carte d'après-midi.
+3. COHÉRENCE NUMÉRIQUE STRICTE AVEC LES CARTES (RÈGLE INVIOLABLE) :
+   - Pour CHAQUE carte 1 à 8, cite EXACTEMENT les villes et les températures fournies entre parenthèses dans la fiche technique.
+   - INTERDICTION FORMELLE d'inventer, arrondir ou modifier les températures ou les rafales ! Si la fiche indique "PONTARLIER (8 degrés)", tu écris obligatoirement "8 degrés à Pontarlier", et JAMAIS 10 degrés ! Si elle indique "BASTIA (21 degrés)", écris "21 degrés à Bastia" ! Si elle indique "BREST (23 degrés)", écris "23 degrés à Brest" ! Si elle indique "BORDEAUX (32 degrés)", écris "32 degrés à Bordeaux" !
+   - Ne recopie JAMAIS les températures d'une carte précédente sur la carte suivante. Chaque carte a ses propres températures uniques.
 4. BAN ABSOLU DU MOT 'CELSIUS' (RÈGLE INVIOLABLE) :
    - Ne dis JAMAIS "degrés Celsius" ni "Celsius" ! Dis uniquement "degrés" ou le chiffre brut (ex: "6 degrés", "25 degrés"). N'écris jamais le symbole °C.
-5. CITATION SYSTÉMATIQUE DES EXTRÊMES SUR CHAQUE CARTE :
-   - Sur CHAQUE carte 1 à 8, cite obligatoirement la ville la plus fraîche et la ville la plus chaude.
 {specific_rules}
 7. LONGUEUR PAR PHRASE :
    - Entre 28 et 38 mots par phrase/carte (ne dépasse pas 40 mots pour un rythme vidéo fluide). Diction posée, naturelle et percutante. N'utilise aucun placeholder entre crochets.
@@ -453,6 +466,7 @@ Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le
                                 break
 
                 if isinstance(phrases, list) and len(phrases) == len(cards):
+                    phrases = [round_gusts_in_text(p) for p in phrases]
                     log(f"✅ Script oral {mode.upper()} rédigé avec succès par Gemini 3.6 Flash ({len(phrases)} phrases) !")
                     return phrases
                 else:
@@ -465,34 +479,43 @@ Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le
     log(f"ℹ️ Utilisation du fallback statique sécurisé ({mode})")
     if mode == "btp":
         return [
-            f"Voici votre bulletin météo BTP. On commence dès demain matin sur {zone_title} sous des conditions globalement calmes et favorables au démarrage des chantiers.",
-            "Pour votre après-midi de demain, le temps restera sec et bien ensoleillé, idéal pour la poursuite des travaux extérieurs et le terrassement.",
-            "Dimanche, une météo stable et clémente permettra de maintenir vos installations en toute sécurité avant la reprise de la semaine.",
-            "Lundi, quelques passages nuageux et ondées locales par l'ouest : surveillez les sols glissants et l'adhérence des engins.",
-            "Mardi, retour d'une grande douceur généralisée sous un ciel lumineux, attention à l'exposition au soleil des équipes en plein air.",
-            "Mercredi, ciel plus chargé avec de probables averses orageuses, pensez à bâcher vos matériaux sensibles à l'humidité.",
-            "Jeudi, atmosphère plus fraîche et vent modéré : vérifiez l'amarrage de vos échafaudages et la prise au vent des grues.",
-            "Vendredi prochain, poursuite de conditions de saison, propices à la finalisation de vos plannings de travaux.",
+            f"Voici votre bulletin météo BTP. On commence {start_phrase_cue} sur {zone_title} sous des conditions globalement calmes et favorables au démarrage des chantiers.",
+            "Pour votre après-midi de mardi, le temps restera sec et bien ensoleillé, idéal pour la poursuite des travaux extérieurs et le terrassement.",
+            "Mercredi, une météo stable et clémente permettra de maintenir vos installations en toute sécurité avant la reprise de la semaine.",
+            "Jeudi, quelques passages nuageux et ondées locales par l'ouest : surveillez les sols glissants et l'adhérence des engins.",
+            "Vendredi, retour d'une grande douceur généralisée sous un ciel lumineux, attention à l'exposition au soleil des équipes en plein air.",
+            "Samedi, ciel plus chargé avec de probables averses orageuses, pensez à bâcher vos matériaux sensibles à l'humidité.",
+            "Dimanche, atmosphère plus fraîche et vent modéré : vérifiez l'amarrage de vos échafaudages et la prise au vent des grues.",
+            "Lundi prochain, poursuite de conditions de saison, propices à la finalisation de vos plannings de travaux.",
             "En conclusion, restez vigilants sur l'évolution du vent et les averses. Excellente fin de semaine et prenez soin de vos équipes avec Météo BTP et Météo-Climat Pro !"
         ]
     else:
         return [
-            f"Bonjour à tous, bienvenue pour votre bulletin météo national. On commence dès demain matin sur {zone_title} avec un réveil calme et agréable.",
-            "Pour votre après-midi de demain, le soleil s'imposera très largement avec des températures idéales pour vos activités extérieures et promenades.",
-            "Dimanche, une très belle journée lumineuse et douce s'annonce sur l'ensemble de vos régions pour clore le week-end.",
-            "Lundi, quelques passages nuageux et ondées locales glisseront par l'ouest tandis que la douceur persistera ailleurs.",
-            "Mardi, retour d'un bel ensoleillement généralisé sous un air particulièrement agréable pour la saison.",
-            "Mercredi, ciel partagé avec quelques averses passagères et un thermomètre qui restera de saison.",
-            "Jeudi, atmosphère plus fraîche et nébulosité automnale, prévoyez un vêtement plus chaud pour vos sorties.",
-            "Vendredi prochain, poursuite de conditions calmes avec de belles éclaircies après dissipation des brumes matinales.",
+            f"Bonjour à tous, bienvenue pour votre bulletin météo national. On commence {start_phrase_cue} sur {zone_title} avec un réveil calme et agréable.",
+            "Pour votre après-midi de mardi, le soleil s'imposera très largement avec des températures idéales pour vos activités extérieures et promenades.",
+            "Mercredi, une très belle journée lumineuse et douce s'annonce sur l'ensemble de vos régions pour clore le week-end.",
+            "Jeudi, quelques passages nuageux et ondées locales glisseront par l'ouest tandis que la douceur persistera ailleurs.",
+            "Vendredi, retour d'un bel ensoleillement généralisé sous un air particulièrement agréable pour la saison.",
+            "Samedi, ciel partagé avec quelques averses passagères et un thermomètre qui restera de saison.",
+            "Dimanche, atmosphère plus fraîche et nébulosité automnale, prévoyez un vêtement plus chaud pour vos sorties.",
+            "Lundi prochain, poursuite de conditions calmes avec de belles éclaircies après dissipation des brumes matinales.",
             "En résumé, profitez pleinement de cette météo agréable au fil des jours. Merci de votre fidélité et excellente suite de vos programmes avec Météo-Climat Pro !"
         ]
 
+def round_gusts_in_text(text):
+    """Arrondit strictement toutes les mentions de rafales en km/h de 5 en 5 (ex: 68 km/h -> 70 km/h)"""
+    def _repl(m):
+        val = int(m.group(1))
+        rounded = int(round(val / 5.0) * 5)
+        return f"{rounded} km/h"
+    return re.sub(r'\b(\d+)\s*km/h', _repl, text)
+
 def clean_for_speech(text):
-    """Bannit formellement la prononciation du mot 'celsius', le nom 'Patrick Marlière', et nettoie les symboles"""
+    """Bannit formellement la prononciation du mot 'celsius', le nom 'Patrick Marlière', arrondit les rafales par 5, et nettoie les symboles"""
     # RÈGLE ABSOLUE : Zéro mention de nom propre (Patrick Marlière / Patrick)
     t = re.sub(r"\b(C['’]était\s+)?Patrick\s+Marli[èe]re\b", "", text, flags=re.IGNORECASE)
     t = re.sub(r"\b(c['’]était\s+)?Patrick\b", "", t, flags=re.IGNORECASE)
+    t = round_gusts_in_text(t)
     t = re.sub(r'°C\b', ' degrés', t)
     t = re.sub(r'°\b', ' degrés', t)
     t = re.sub(r'degrés\s+[cC]elsius', 'degrés', t)
