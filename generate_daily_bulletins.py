@@ -172,28 +172,30 @@ def main():
     args = parser.parse_args()
 
     api_key = get_api_key()
-    maps_dir = find_maps_dir()
+    # ponytail: cur_dir en priorité → find_forecast_csv trouvera le CSV généré dans le même dossier sur GitHub Actions
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    maps_dir = find_maps_dir(cur_dir)
     music_path = find_music_path()
 
-    cur_dir = os.path.dirname(os.path.abspath(__file__))
     output_dir = args.output_dir if args.output_dir else os.path.join(cur_dir, "output_bulletins")
     os.makedirs(output_dir, exist_ok=True)
 
     cards = collect_cards("france", maps_dir, orientation="landscape")
+    log(f"📋 {len(cards)} cartes trouvées dans {maps_dir}")
 
     if args.mode in ["grand_public", "both"]:
-        log("🧠 Rédaction du script Grand Public par l'IA (Gemini 3.6 Flash)...")
+        log("🧠 Rédaction du script Grand Public par l'IA (données CSV réelles J+1)...")
         script_gp = generate_script_from_data("france", cards, api_key, maps_dir, mode="grand_public")
         if not script_gp:
-            log("⚠️ Fallback script Grand Public de secours")
+            log("⚠️ ATTENTION : script IA indisponible — utilisation du fallback de secours (températures non synchronisées avec les cartes)")
             script_gp = SCRIPT_GRAND_PUBLIC
         generate_bulletin_pair("grand_public", script_gp, output_dir, maps_dir, music_path, api_key)
 
     if args.mode in ["btp", "both"]:
-        log("🧠 Rédaction du script BTP Pro par l'IA (Gemini 3.6 Flash)...")
+        log("🧠 Rédaction du script BTP Pro par l'IA (données CSV réelles J+1)...")
         script_btp = generate_script_from_data("france", cards, api_key, maps_dir, mode="btp")
         if not script_btp:
-            log("⚠️ Fallback script BTP de secours")
+            log("⚠️ ATTENTION : script IA indisponible — utilisation du fallback de secours (températures non synchronisées avec les cartes)")
             script_btp = SCRIPT_BTP
         generate_bulletin_pair("btp", script_btp, output_dir, maps_dir, music_path, api_key)
 
