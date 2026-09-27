@@ -632,7 +632,7 @@ def main():
     
     now = datetime.now()
     default_start_tomorrow = True
-    parser.add_argument("--start-tomorrow", action="store_true", default=default_start_tomorrow, help="Commencer les prévisions à partir de demain au lieu d'aujourd'hui")
+    parser.add_argument("--day-offset", type=int, default=None, help="Décalage du jour de départ (ex: 2 pour mardi)")
     parser.add_argument("--temp-highlight", action="store_true", help="Mise en avant min/max des températures (bleu min, rouge max, noir pour le reste)")
     parser.add_argument("--patrick", action="store_true", help="Générer les cartes spécifiques pour le Bulletin Patrick")
     parser.add_argument("--json-only", action="store_true", help="Générer uniquement les fichiers JSON et CSV, sans captures d'images")
@@ -640,7 +640,8 @@ def main():
 
     zone_key = args.zone
     days_to_capture = args.days
-    start_tomorrow = args.start_tomorrow
+    start_offset = args.day_offset if args.day_offset is not None else (1 if args.start_tomorrow else 0)
+    start_tomorrow = (start_offset > 0)
     orientation = args.orientation
     temp_highlight = args.temp_highlight
     patrick_mode = args.patrick
@@ -648,16 +649,16 @@ def main():
         temp_highlight = True
     
     json_only = args.json_only
-    # By default: 8 days for france_pictos (national), 3 days (J0, J1, J2) for regional maps
+    # By default: 8 days for france_pictos (national) or offset, 3 days (J0, J1, J2) for regional maps
     if days_to_capture is None:
         if json_only:
             days_to_capture = 16
-        elif patrick_mode:
-            days_to_capture = 5
+        elif patrick_mode or args.day_offset is not None:
+            days_to_capture = 8
         else:
-            days_to_capture = 8 if zone_key == "france_pictos" else 3
-    elif patrick_mode:
-        days_to_capture = max(days_to_capture, 5)
+            days_to_capture = 8 if zone_key in ["france_pictos", "france"] else 3
+    elif patrick_mode or args.day_offset is not None:
+        days_to_capture = max(days_to_capture, 8)
 
     json_filename = f"meteofrance_data_{zone_key}.json" if zone_key != "france_pictos" else "meteofrance_data.json"
     JSON_OUT_PATH = os.path.join(PROJECT_DIR, json_filename)
@@ -709,7 +710,7 @@ def main():
     all_cities_for_gusts = list(cities_list)
     if not eph_in_list:
         all_cities_for_gusts.append(eph_city)
-    all_gusts = fetch_all_openmeteo_gusts(all_cities_for_gusts, start_tomorrow=start_tomorrow, days=days_to_capture)
+    all_gusts = fetch_all_openmeteo_gusts(all_cities_for_gusts, start_tomorrow=start_tomorrow, days=days_to_capture, start_offset=start_offset)
 
     # Fetch forecasts for all zone cities
     print(f"Fetching Météo-France forecasts for {len(cities_list)} cities...")
@@ -724,7 +725,7 @@ def main():
         om_gusts = all_gusts.get(key)
         
         if mf_json:
-            mock = build_openmeteo_mock(mf_json, start_tomorrow=start_tomorrow, om_gusts=om_gusts, days=days_to_capture)
+            mock = build_openmeteo_mock(mf_json, start_tomorrow=start_tomorrow, om_gusts=om_gusts, days=days_to_capture, start_offset=start_offset)
             if mock:
                 weather_data_list.append(mock)
             else:
@@ -869,19 +870,15 @@ def main():
     time.sleep(2.0)
 
     # 3. Render maps
-    if patrick_mode:
+    if patrick_mode or args.day_offset is not None:
         renders = [
             (0, 'morning', 'matin', 'weather_temp'),
             (0, 'afternoon', 'apresmidi', 'weather_temp'),
             (0, 'day', 'precip', 'precip'),
-            (0, 'day', 'gusts', 'gusts'),
-            (1, 'afternoon', 'apresmidi', 'weather_temp'),
-            (2, 'afternoon', 'apresmidi', 'weather_temp'),
-            (3, 'afternoon', 'apresmidi', 'weather_temp'),
-            (4, 'afternoon', 'apresmidi', 'weather_temp')
+            (0, 'day', 'gusts', 'gusts')
         ]
-        for extra_d in range(5, days_to_capture):
-            renders.append((extra_d - 1, 'afternoon', 'apresmidi', 'weather_temp'))
+        for d in range(1, min(days_to_capture, 7)):
+            renders.append((d, 'afternoon', 'apresmidi', 'weather_temp'))
     else:
         periods = {
             'morning': 'matin',
@@ -898,7 +895,7 @@ def main():
     
     print("\nStarting automated map rendering...")
     for day, period_key, period_name, param in renders:
-        actual_day = day + 1 if start_tomorrow else day
+        actual_day = day + 1 if (start_offset > 0) else day
         current_render += 1
         print(f"[{current_render}/{total_renders}] Rendering J{actual_day} - {period_name.upper()} ({param})...")
 
@@ -920,7 +917,8 @@ def main():
                 f_img.write(img_bytes)
             print(f"   -> Saved: {filepath}")
             if actual_day == 1:
-                legacy_path = os.path.join(DEST_DIR, f"carte_{period_name}{suffix}.jpg")
+                legacy_file = f"carte_{period_name}{suffix}.jpg" if zone_key == "france_pictos" else f"carte_{zone_key}_{period_name}{suffix}.jpg"
+                legacy_path = os.path.join(DEST_DIR, legacy_file)
                 with open(legacy_path, 'wb') as f_img:
                     f_img.write(img_bytes)
         else:
