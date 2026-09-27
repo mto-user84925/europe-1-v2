@@ -700,7 +700,7 @@ def main():
         "bfc":           {"name": "Dijon",       "lat": 47.3220, "lon":  5.0415},
         "bretagne":      {"name": "Rennes",      "lat": 48.1173, "lon": -1.6778},
         "pdl":           {"name": "Nantes",      "lat": 47.2184, "lon": -1.5536},
-        "cvl":           {"name": "Orléans",     "lat": 47.9029, "lon":  1.9092},
+        "cvl":           {"name": "Blois",       "lat": 47.5800, "lon":  1.3300},
         "corse":         {"name": "Ajaccio",     "lat": 41.9192, "lon":  8.7386},
     }
     eph_city = ZONE_EPHEMERIS_CITY.get(zone_key, cities_list[0] if cities_list else {"name": "Paris", "lat": 48.8566, "lon": 2.3522})

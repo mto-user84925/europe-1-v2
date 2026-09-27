@@ -162,7 +162,7 @@ def collect_cards(zone, maps_dir, orientation="landscape"):
 def find_forecast_csv(zone, maps_dir):
     """Trouve le fichier CSV des prévisions généré par Météo-France"""
     cur_dir = os.path.dirname(os.path.abspath(__file__))
-    fname = "meteofrance_daily_forecast_hdf.csv" if zone == "hdf" else "meteofrance_daily_forecast.csv"
+    fname = f"meteofrance_daily_forecast_{zone}.csv" if zone not in ["france", "france_pictos"] else "meteofrance_daily_forecast.csv"
     candidates = [
         os.path.join(maps_dir, fname) if maps_dir else None,
         r"C:\Users\grego\Desktop\cartes_alertes" + "\\" + fname,
@@ -177,7 +177,7 @@ def find_forecast_csv(zone, maps_dir):
 def load_hourly_btp_stats(zone, maps_dir):
     """Extrait du CSV horaire les rafales maximales et les cumuls de pluie par date pour le BTP"""
     cur_dir = os.path.dirname(os.path.abspath(__file__))
-    fname = "meteofrance_hourly_forecast_hdf.csv" if zone == "hdf" else "meteofrance_hourly_forecast.csv"
+    fname = f"meteofrance_hourly_forecast_{zone}.csv" if zone not in ["france", "france_pictos"] else "meteofrance_hourly_forecast.csv"
     candidates = [
         os.path.join(maps_dir, fname) if maps_dir else None,
         r"C:\Users\grego\Desktop\cartes_alertes" + "\\" + fname,
@@ -225,13 +225,119 @@ def load_hourly_btp_stats(zone, maps_dir):
         log(f"⚠️ Erreur lecture hourly CSV : {e}")
     return daily_stats
 
+BASINS_MAP = {
+    "cvl": {
+        "Bassin Nord (Eure-et-Loir & Beauce)": ["Chartres", "Dreux", "Châteaudun", "Nogent-le-Rotrou", "Pithiviers"],
+        "Bassin Centre (Loir-et-Cher & Touraine - Blois)": ["Blois", "Romorantin-Lanthenay", "Vendôme", "Tours", "Chinon", "Le Blanc"],
+        "Bassin Est & Sud (Loiret, Cher & Berry)": ["Orléans", "Montargis", "Bourges", "Saint-Amand-Montrond", "Sancerre", "Châteauroux", "Écueillé", "Éguzon-Chantôme", "Argent-sur-Sauldre", "Le Grand-Pressigny"]
+    },
+    "hdf": {
+        "Bassin Littoral / Côte d'Opale": ["Dunkerque", "Calais", "Boulogne-sur-Mer", "Berck", "Abbeville"],
+        "Bassin Métropole & Flandres": ["Lille", "Arras", "Valenciennes", "Cambrai", "Hazebrouck"],
+        "Bassin Picardie / Sud": ["Amiens", "Beauvais", "Compiègne", "Senlis", "Saint-Quentin", "Château-Thierry", "Laon", "Soissons", "Vervins"]
+    }
+}
+
+def load_and_compress_card_b64(card_path, max_dim=1024, quality=75):
+    """
+    Charge une carte météo JPG, la redimensionne proportionnellement (max 1024px)
+    et l'encode en base64 pour l'analyse visuelle directe par Gemini 3.6 Flash.
+    """
+    try:
+        with Image.open(card_path) as img:
+            img = img.convert("RGB")
+            w, h = img.size
+            if max(w, h) > max_dim:
+                scale = max_dim / float(max(w, h))
+                img = img.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=quality, optimize=True)
+            return base64.b64encode(buf.getvalue()).decode("utf-8")
+    except Exception as e:
+        log(f"⚠️ Erreur encodage image {card_path}: {e}")
+        try:
+            with open(card_path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
+        except Exception:
+            return None
+
+def analyze_spatial_weather(zone, rows):
+    """
+    Analyse la répartition spatiale du temps par commune et par bassin
+    pour détecter les contrastes réels et isoler les ondées marginales.
+    """
+    total = len(rows)
+    if total == 0:
+        return "Données météo indisponibles"
+
+    counts = {}
+    city_by_weather = {}
+    for r in rows:
+        lbl = r.get("Temps_Label", "SOLEIL").strip()
+        counts[lbl] = counts.get(lbl, 0) + 1
+        city_by_weather.setdefault(lbl, []).append(r.get("Ville", "").strip())
+
+    dominant = max(counts, key=counts.get)
+    dom_count = counts[dominant]
+
+    basins = BASINS_MAP.get(zone)
+    if not basins:
+        return f"Dominante : {dominant} ({dom_count}/{total} villes)"
+
+    rows_by_city = {r.get("Ville", "").strip(): r for r in rows}
+    basin_summaries = []
+
+    for b_name, b_cities in basins.items():
+        b_rows = [rows_by_city[c] for c in b_cities if c in rows_by_city]
+        if not b_rows:
+            continue
+        b_counts = {}
+        for r in b_rows:
+            lbl = r.get("Temps_Label", "SOLEIL").strip()
+            b_counts[lbl] = b_counts.get(lbl, 0) + 1
+        b_dom = max(b_counts, key=b_counts.get)
+        basin_summaries.append(f"{b_name} : {b_dom}")
+
+    basin_str = " | ".join(basin_summaries)
+
+    # Cas 1 : Phénomène marginal (< 20% des villes, ex: 1 ou 2 villes isolées avec pluie)
+    minority_weathers = [k for k, v in counts.items() if k != dominant and v <= 2]
+    if minority_weathers and any(any(w in m.upper() for w in ["PLUIE", "AVERSE", "ORAGE"]) for m in minority_weathers):
+        rain_spots = []
+        for m in minority_weathers:
+            rain_spots.extend(city_by_weather[m])
+        return (
+            f"TEMPS LARGEMENT {dominant.upper()} ({dom_count}/{total} villes). "
+            f"⚠️ ATTENTION : Seules de rares ondées isolées touchent {', '.join(rain_spots)}. "
+            f"Le reste de la région et Blois restent sous un temps {dominant.lower()} ! "
+            f"INTERDICTION FORMELLE de généraliser la pluie à toute la région ! Bassins : ({basin_str})"
+        )
+
+    # Cas 2 : Vrai contraste spatial marqué entre bassins
+    if len(counts) > 1 and dom_count < total * 0.75:
+        return (
+            f"⚠️ VRAI CONTRASTE SPATIAL : Le temps varie nettement selon les secteurs. "
+            f"Détail par bassin : {basin_str}. "
+            f"Décris fidèlement ce contraste visible sur la carte (ex: averses au nord, soleil au sud) !"
+        )
+
+    # Cas 3 : Situation globalement homogène
+    return f"Situation homogène : {dominant} dominant sur toute la région ({dom_count}/{total} villes). Bassins : ({basin_str})"
+
 def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public"):
     """
     RÉDACTION PAR IA (GEMINI 2.5 FLASH) À PARTIR DE J+1 (DEMAIN) :
     Lit les prévisions officielles quotidiennes et horaires (Vent, Rafales, Pluie, Températures)
     et génère le script oral broadcast de Patrick Marlière pour le mode spécifié ('grand_public' ou 'btp').
     """
-    zone_title = "la France entière" if zone == "france" else "les Hauts-de-France"
+    if zone == "france":
+        zone_title = "la France entière"
+    elif zone == "cvl":
+        zone_title = "la région Centre-Val de Loire, avec un focus sur Blois et le Loir-et-Cher"
+    elif zone == "hdf":
+        zone_title = "les Hauts-de-France"
+    else:
+        zone_title = f"la région {zone.upper()}"
     csv_file = find_forecast_csv(zone, maps_dir)
     hourly_stats = load_hourly_btp_stats(zone, maps_dir)
 
@@ -262,6 +368,14 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
                 ["BORDEAUX", "TOULOUSE", "BIARRITZ", "AGEN", "TARBES"],
                 ["MARSEILLE", "NICE", "MONTPELLIER", "PERPIGNAN", "AJACCIO", "BASTIA"],
                 ["STRASBOURG", "LYON", "METZ", "BOURGES", "TOURS", "VICHY", "AURILLAC"]
+            ]
+        elif zone == "cvl":
+            regional_pools = [
+                ["Blois", "Romorantin-Lanthenay", "Vendôme"],
+                ["Tours", "Chinon", "Le Blanc"],
+                ["Orléans", "Montargis", "Pithiviers"],
+                ["Chartres", "Châteaudun", "Dreux", "Nogent-le-Rotrou"],
+                ["Bourges", "Saint-Amand-Montrond", "Châteauroux", "Sancerre"]
             ]
         else:
             regional_pools = [
@@ -330,17 +444,20 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             else:
                 pluie_detail = " | PLUIE : temps sec"
 
+            # Analyse spatiale et contrastes géographiques
+            spatial_weather = analyze_spatial_weather(zone, rows)
+
             # Pour J1 (première date), on génère deux entrées : Carte 1 (Matin) et Carte 2 (Après-midi)
             if idx == 0:
                 summary_lines.append(
                     f"- CARTE 1 ({date_label.upper()} MATIN) : ATTENTION, cette carte affiche STRICTEMENT les températures du MATIN. "
-                    f"Ciel = {temps_str}{vent_detail} | "
+                    f"Répartition visuelle : {spatial_weather}{vent_detail} | "
                     f"Sur cette carte matinale : la ville la plus fraîche = {f_matin}, la plus douce = {d_matin} | "
                     f"Autres repères matinaux : {', '.join(other_cities_matin)}"
                 )
                 summary_lines.append(
                     f"- CARTE 2 ({date_label.upper()} APRÈS-MIDI) : ATTENTION, cette carte affiche STRICTEMENT les températures de l'APRÈS-MIDI. "
-                    f"Ciel = {temps_str}{vent_detail}{pluie_detail} | "
+                    f"Répartition visuelle : {spatial_weather}{vent_detail}{pluie_detail} | "
                     f"Sur cette carte d'après-midi : la ville la plus fraîche = {f_aprem}, la plus chaude = {c_aprem} | "
                     f"Autres repères de l'après-midi : {', '.join(other_cities_aprem)}"
                 )
@@ -348,7 +465,7 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
                 card_num = idx + 2
                 summary_lines.append(
                     f"- CARTE {card_num} ({date_label.upper()} APRÈS-MIDI) : ATTENTION, cette carte affiche STRICTEMENT les températures de l'APRÈS-MIDI. "
-                    f"Ciel = {temps_str}{vent_detail}{pluie_detail} | "
+                    f"Répartition visuelle : {spatial_weather}{vent_detail}{pluie_detail} | "
                     f"Sur cette carte d'après-midi : la ville la plus fraîche = {f_aprem}, la plus chaude = {c_aprem} | "
                     f"Autres repères de l'après-midi : {', '.join(other_cities_aprem)}"
                 )
@@ -370,12 +487,21 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
     if mode == "btp":
         persona = "Tu es un présentateur météo professionnel expert pour Météo BTP et Météo-Climat Pro."
         audience = f"un bulletin météo TV broadcast professionnel de très haute précision technique, destiné aux professionnels du BTP (chefs de chantier, artisans, conducteurs de travaux, compagnons) pour {zone_title}."
-        intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP. On commence {start_phrase_cue}, avec..."'
-        specific_rules = """5. PRÉCISION VENT ET RAFALES BTP :
+        if zone == "cvl":
+            intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP pour la région Centre-Val de Loire, avec un focus sur Blois et le Loir-et-Cher. On commence {start_phrase_cue}, avec..."'
+            phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité pour le Centre-Val de Loire et le secteur de Blois, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
+        else:
+            intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP. On commence {start_phrase_cue}, avec..."'
+            phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
+        specific_rules = """5. MODE VISIO & RESPECT STRICT DU CONTRASTE SPATIAL (RÈGLE INVIOLABLE) :
+   - Tu disposes DIRECTEMENT de l'image de chaque carte météo haute définition transmise dans ce prompt. OBSERVE-LA ATTENTIVEMENT !
+   - Si la carte ou la fiche technique indique un contraste ou un phénomène marginal (ex: 20 villes sous les nuages ou le soleil et 1 seule sous une ondée comme Le Grand-Pressigny ou Le Blanc), INTERDICTION FORMELLE de dire qu'il pleut partout ou sur la région !
+   - Mentionne expressément la nuance géographique (ex: "un temps très nuageux mais sec sur la région et à Blois, avec tout au plus une ondée très isolée vers Le Grand-Pressigny").
+   - Adapte le conseil BTP : autorise les travaux extérieurs et coulages sur les secteurs secs, et réserve la vigilance aux seules zones arrosées.
+6. PRÉCISION VENT ET RAFALES BTP :
    - Les rafales DOIVENT TOUJOURS être citées au multiple de 5 le plus proche (ex: 45, 50, 55, 60, 65, 70, 75 km/h). Utilise STRICTEMENT la valeur arrondie indiquée sous chaque carte !
-6. CONSEILS MÉTIERS BTP :
+7. CONSEILS MÉTIERS BTP :
    - Relie les conditions météo aux chantiers : coulage béton, séchage, terrassement, étanchéité, hydratation des ouvriers si forte chaleur, arrêt des grues et sécurisation des échafaudages."""
-        phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
     else:
         persona = "Tu es un présentateur météorologue officiel pour Météo-Climat Pro."
         audience = f"le bulletin météo national grand public officiel, destiné aux téléspectateurs pour la météo au quotidien, les activités extérieures et les prévisions de la semaine pour {zone_title}."
@@ -417,11 +543,33 @@ Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le
 {{"phrases": ["phrase 1", "phrase 2", ..., "phrase {len(cards)}"]}}"""
 
     if api_key:
+        data = None
         try:
-            log(f"🧠 Appel IA (Gemini 3.6 Flash via OpenRouter) pour rédaction dynamique du script ({mode.upper()})...")
+            log(f"🧠 Mode Visio Multimodal (Gemini 3.6 Flash Vision via OpenRouter) : chargement et observation des cartes...")
+            user_content = [{"type": "text", "text": prompt_text}]
+            images_loaded = 0
+            for idx, c in enumerate(cards):
+                c_path = c.get("path")
+                if c_path and os.path.exists(c_path):
+                    b64 = load_and_compress_card_b64(c_path)
+                    if b64:
+                        user_content.append({
+                            "type": "text",
+                            "text": f"--- CARTE {idx+1} ({c.get('label', os.path.basename(c_path))}) ---"
+                        })
+                        user_content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{b64}"
+                            }
+                        })
+                        images_loaded += 1
+            if images_loaded > 0:
+                log(f"👁️ ✅ Mode Visio actif : {images_loaded} cartes transmises à Gemini 3.6 Flash pour observation directe !")
+
             payload = {
                 "model": "google/gemini-3.6-flash",
-                "messages": [{"role": "user", "content": prompt_text}],
+                "messages": [{"role": "user", "content": user_content}],
                 "response_format": {"type": "json_object"}
             }
             req = urllib.request.Request(
@@ -435,8 +583,35 @@ Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 }
             )
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=60) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+        except Exception as e_visio:
+            log(f"⚠️ Mode Visio IA ({e_visio}) -> Bascule sur fallback texte structuré...")
+            try:
+                payload = {
+                    "model": "google/gemini-3.6-flash",
+                    "messages": [{"role": "user", "content": prompt_text}],
+                    "response_format": {"type": "json_object"}
+                }
+                req = urllib.request.Request(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://meteoclimatpro.fr",
+                        "X-Title": "Meteo Climat Pro",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+            except Exception as e_text:
+                log(f"⚠️ Erreur fallback texte IA ({e_text})")
+                data = None
+
+        if data:
+            try:
                 raw = data["choices"][0]["message"]["content"].strip()
                 if "```" in raw:
                     parts = raw.split("```")
@@ -471,9 +646,8 @@ Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le
                     return phrases
                 else:
                     log(f"⚠️ Nombre de phrases inattendu ({len(phrases) if isinstance(phrases, list) else 'non-liste'}) vs {len(cards)} cartes")
-
-        except Exception as e:
-            log(f"⚠️ Erreur génération script IA ({e}) -> Utilisation du script de secours")
+            except Exception as e_parse:
+                log(f"⚠️ Erreur parsing réponse IA ({e_parse})")
 
     # Fallback propre à J+1
     log(f"ℹ️ Utilisation du fallback statique sécurisé ({mode})")
@@ -506,9 +680,10 @@ def round_gusts_in_text(text):
     """Arrondit strictement toutes les mentions de rafales en km/h de 5 en 5 (ex: 68 km/h -> 70 km/h)"""
     def _repl(m):
         val = int(m.group(1))
+        unit = m.group(2)
         rounded = int(round(val / 5.0) * 5)
-        return f"{rounded} km/h"
-    return re.sub(r'\b(\d+)\s*km/h', _repl, text)
+        return f"{rounded} {unit}"
+    return re.sub(r'\b(\d+)\s*(km/h|kilomètres-heure|kilomètres par heure|kmh)', _repl, text, flags=re.IGNORECASE)
 
 def clean_for_speech(text):
     """Bannit formellement la prononciation du mot 'celsius', le nom 'Patrick Marlière', arrondit les rafales par 5, et nettoie les symboles"""
