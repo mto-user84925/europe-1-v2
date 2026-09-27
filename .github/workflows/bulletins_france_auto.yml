@@ -93,6 +93,8 @@ jobs:
       - name: 9. Envoyer l'e-mail de notification avec liens directs
         env:
           PYTHONUNBUFFERED: "1"
+          GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           SFR_EMAIL: ${{ secrets.SFR_EMAIL }}
           SFR_PASSWORD: ${{ secrets.SFR_PASSWORD }}
           TRIGGERED_BY: ${{ github.event.inputs.triggered_by || 'gregory' }}

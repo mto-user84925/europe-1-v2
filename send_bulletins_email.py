@@ -16,25 +16,30 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
-    email_user = os.environ.get("SFR_EMAIL", "gregory.langlet@sfr.fr").strip().replace("\ufeff", "").replace("\u200b", "")
-    email_pass = os.environ.get("SFR_PASSWORD")
-    if email_pass:
-        email_pass = email_pass.strip().replace("\ufeff", "").replace("\u200b", "")
+    gmail_user = (os.environ.get("GMAIL_EMAIL") or "langlet.gregory@gmail.com").strip().replace("\ufeff", "").replace("\u200b", "")
+    gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
+    if gmail_pass:
+        gmail_pass = gmail_pass.strip().replace("\ufeff", "").replace("\u200b", "")
+
+    sfr_user = os.environ.get("SFR_EMAIL", "gregory.langlet@sfr.fr").strip().replace("\ufeff", "").replace("\u200b", "")
+    sfr_pass = os.environ.get("SFR_PASSWORD")
+    if sfr_pass:
+        sfr_pass = sfr_pass.strip().replace("\ufeff", "").replace("\u200b", "")
 
     # Fallback local config si disponible
-    if not email_pass:
-        local_cfg = r"C:\Users\grego\.gemini\config\skills\mail\config.json"
-        if os.path.exists(local_cfg):
+    if not gmail_pass and not sfr_pass:
+        local_env = r"C:\Users\grego\Documents\METEO_CLIMAT\veille-automation\.env"
+        if os.path.exists(local_env):
             try:
-                import json
-                with open(local_cfg, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-                    email_pass = cfg.get("password", "").strip().replace("\ufeff", "").replace("\u200b", "")
+                with open(local_env, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("GMAIL_APP_PASSWORD="):
+                            gmail_pass = line.split("=", 1)[1].strip().replace("\ufeff", "").replace("\u200b", "")
             except Exception:
                 pass
 
-    if not email_pass:
-        print("[EMAIL] ❌ ERREUR : SFR_PASSWORD manquant, envoi annulé.", flush=True)
+    if not gmail_pass and not sfr_pass:
+        print("[EMAIL] ❌ ERREUR : Aucun mot de passe SMTP (GMAIL ou SFR) disponible, envoi annulé.", flush=True)
         return False
 
     trig = (os.environ.get("TRIGGERED_BY") or triggered_by or "gregory").strip().lower()
@@ -111,24 +116,45 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
 </body>
 </html>"""
 
+    sender_user = f"Météo-Climat Pro <{gmail_user}>" if gmail_pass else sfr_user
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = email_user
+    msg["From"] = sender_user
     msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-    print(f"[EMAIL] Connexion à smtp.sfr.fr:465 pour envoi à {', '.join(recipients)}...", flush=True)
-    try:
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.sfr.fr", 465, context=context, timeout=25) as server:
-            server.login(email_user, email_pass)
-            server.sendmail(email_user, recipients, msg.as_string())
-        print(f"[EMAIL] ✅ Notification par e-mail envoyée avec succès à {', '.join(recipients)} !", flush=True)
-        return True
-    except Exception as e:
-        print(f"[EMAIL] ❌ Erreur lors de l'envoi de l'e-mail : {e}", flush=True)
-        return False
+    # 1. Priorité absolue : Gmail SMTP (100% fiable sur GitHub Actions / cloud)
+    if gmail_pass:
+        print(f"[EMAIL] Connexion à smtp.gmail.com:587 pour envoi à {', '.join(recipients)}...", flush=True)
+        try:
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(gmail_user, gmail_pass)
+                server.sendmail(gmail_user, recipients, msg.as_bytes())
+            print(f"[EMAIL] ✅ Notification par e-mail envoyée avec succès via Gmail à {', '.join(recipients)} !", flush=True)
+            return True
+        except Exception as e:
+            print(f"[EMAIL] ⚠️ Échec via Gmail : {e}. Tentative de repli via SFR...", flush=True)
+
+    # 2. Repli : SFR SMTP
+    if sfr_pass:
+        print(f"[EMAIL] Connexion à smtp.sfr.fr:465 pour envoi à {', '.join(recipients)}...", flush=True)
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.sfr.fr", 465, context=context, timeout=25) as server:
+                server.login(sfr_user, sfr_pass)
+                server.sendmail(sfr_user, recipients, msg.as_bytes())
+            print(f"[EMAIL] ✅ Notification par e-mail envoyée avec succès via SFR à {', '.join(recipients)} !", flush=True)
+            return True
+        except Exception as e:
+            print(f"[EMAIL] ❌ Erreur lors de l'envoi de l'e-mail via SFR : {e}", flush=True)
+            return False
+
+    return False
 
 if __name__ == "__main__":
     mode_arg = sys.argv[1] if len(sys.argv) > 1 else "grand_public"
-    send_bulletin_notification(mode_arg)
+    trig_arg = sys.argv[2] if len(sys.argv) > 2 else "gregory"
+    send_bulletin_notification(mode_arg, trig_arg)
