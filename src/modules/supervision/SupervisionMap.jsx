@@ -428,7 +428,8 @@ const SupervisionMap = () => {
     useEffect(() => {
         if (!isPlaying || timestamps.length === 0) return;
         const isLastFrame = currentIndex === timestamps.length - 1;
-        const delay = isLastFrame ? 4000 : 1000;
+        // ponytail: pause fluide de 1400ms sur la dernière frame (vs 4000ms avant) pour éviter l'impression de blocage
+        const delay = isLastFrame ? 1400 : 800;
         timerRef.current = setTimeout(() => {
             setCurrentIndex(prev => (prev === timestamps.length - 1 ? 0 : prev + 1));
         }, delay);
@@ -691,11 +692,8 @@ const SupervisionMap = () => {
 
                         {/* Couche Radar RainViewer */}
                         {layers.radar && radarSource === 'rainviewer' && timestamps.map((ts, idx) => {
-                            const isCurrent = idx === currentIndex;
-                            const isBuffered = Math.abs(idx - currentIndex) <= 2;
-                            if (!isBuffered) return null;
                             if (!ts.path) return null;
-
+                            const isCurrent = idx === currentIndex;
                             const host = ts.host || radarHost || 'https://tilecache.rainviewer.com';
                             const url = `${host}${ts.path}/256/{z}/{x}/{y}/${radarScheme}/1_1.png`;
 
@@ -703,26 +701,23 @@ const SupervisionMap = () => {
                                 <TileLayer
                                     key={`radar-rv-${ts.time}`}
                                     url={url}
-                                    opacity={isCurrent ? 0.8 : 0}
+                                    className="radar-tile-layer"
+                                    opacity={isCurrent ? 0.85 : 0}
                                     zIndex={isCurrent ? 1000 : 100}
-                                    maxNativeZoom={7}
-                                    maxZoom={20}
+                                    maxNativeZoom={12}
+                                    maxZoom={18}
                                     tileSize={256}
-                                    updateWhenZooming={false}
-                                    keepBuffer={4}
+                                    keepBuffer={8}
                                 />
                             );
                         })}
 
                         {/* Couche Radar Météo-France */}
                         {layers.radar && radarSource === 'meteofrance' && timestamps.map((ts, idx) => {
-                            const isCurrent = idx === currentIndex;
-                            const isBuffered = Math.abs(idx - currentIndex) <= 2;
-                            if (!isBuffered) return null;
-
                             const filename = ts.filename;
                             const bounds = ts.leaflet_bounds;
                             if (!filename || !bounds) return null;
+                            const isCurrent = idx === currentIndex;
 
                             return (
                                 <ImageOverlay

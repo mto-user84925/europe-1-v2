@@ -151,11 +151,8 @@ const RadarMap = ({ zone, currentZoneId, timestamps, currentIndex, mapStyle, sho
 
                 {/* Radar RainViewer — TileLayer animé */}
                 {radarSource === 'rainviewer' && timestamps.map((ts, idx) => {
-                    const isCurrent = idx === currentIndex;
-                    const isBuffered = Math.abs(idx - currentIndex) <= 3;
-                    if (!isBuffered) return null;
                     if (!ts.path) return null;
-
+                    const isCurrent = idx === currentIndex;
                     const host = ts.host || 'https://tilecache.rainviewer.com';
                     const url = `${host}${ts.path}/256/{z}/{x}/{y}/6/1_1.png`;
 
@@ -163,26 +160,23 @@ const RadarMap = ({ zone, currentZoneId, timestamps, currentIndex, mapStyle, sho
                         <TileLayer
                             key={`radar-rv-${ts.time}`}
                             url={url}
+                            className="radar-tile-layer"
                             opacity={isCurrent ? 0.85 : 0}
                             zIndex={isCurrent ? 1000 : 100}
-                            maxNativeZoom={7}
-                            maxZoom={20}
+                            maxNativeZoom={12}
+                            maxZoom={18}
                             tileSize={256}
-                            updateWhenZooming={false}
-                            keepBuffer={4}
+                            keepBuffer={8}
                         />
                     );
                 })}
 
                 {/* Radar Météo-France — ImageOverlay animé */}
                 {radarSource === 'meteofrance' && timestamps.map((ts, idx) => {
-                    const isCurrent = idx === currentIndex;
-                    const isBuffered = Math.abs(idx - currentIndex) <= 3;
-                    if (!isBuffered) return null;
-
                     const filename = ts.filename;
                     const bounds = ts.leaflet_bounds;
                     if (!filename || !bounds) return null;
+                    const isCurrent = idx === currentIndex;
 
                     return (
                         <ImageOverlay
@@ -190,7 +184,7 @@ const RadarMap = ({ zone, currentZoneId, timestamps, currentIndex, mapStyle, sho
                             url={ts.imageUrl || `/radar-mf/${filename}`}
                             bounds={bounds}
                             className="radar-tile-pro"
-                            opacity={isCurrent ? 0.85 : 0}
+                            opacity={isCurrent ? 0.75 : 0}
                             zIndex={isCurrent ? 1000 : 100}
                         />
                     );
@@ -549,8 +543,8 @@ const RadarFrance = () => {
         }
 
         const isLastFrame = currentIndex === timestamps.length - 1;
-        // Si c'est la dernière image, on attend 3 secondes, sinon 900ms (fluidité améliorée)
-        const delay = isLastFrame ? 3000 : (900 / playbackSpeed);
+        // ponytail: pause fluide de 1400ms sur la dernière frame (vs 3000ms avant) pour éviter l'impression de blocage
+        const delay = isLastFrame ? 1400 : Math.round(800 / playbackSpeed);
 
         timerRef.current = setTimeout(() => {
             setCurrentIndex((prev) => {

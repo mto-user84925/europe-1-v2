@@ -487,3 +487,7 @@
         padding: 4px 8px !important;
     }
 }
+
+.radar-tile-layer {
+    transition: opacity 0.2s ease-in-out;
+}
