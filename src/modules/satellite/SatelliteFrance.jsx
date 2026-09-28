@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, ImageOverlay, ZoomControl } from 'react-leaflet';
 import '../radar/RadarFrance.css';
 import { Satellite, RefreshCw, Play, Square, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CARTO_TILES } from '../../constants/carto';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EUMETSAT WMS GetMap — 1 seule image par frame (pas de tuiles)
@@ -274,7 +275,7 @@ const SatelliteFrance = () => {
 
                         {/* Labels / frontières par-dessus */}
                         <TileLayer
-                            url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+                            url={CARTO_TILES.LIGHT_ONLY_LABELS}
                             zIndex={600}
                             opacity={0.85}
                         />

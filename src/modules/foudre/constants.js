@@ -1,3 +1,5 @@
+import { CARTO_TILES } from '../../constants/carto';
+
 // Constantes partagées pour le module Foudre
 
 /**
@@ -27,28 +29,28 @@ export const MAP_PALETTES = {
         fill: "#f1f5f9",
         stroke: "#cbd5e1",
         bg: "#ffffff",
-        tiles: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+        tiles: CARTO_TILES.LIGHT_NOLABELS
     },
     dark: {
         name: "Sombre Expert",
         fill: "#1e293b",
         stroke: "#475569",
         bg: "#0f172a",
-        tiles: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png"
+        tiles: CARTO_TILES.DARK_NOLABELS
     },
     blue: {
         name: "Océan",
         fill: "#dbeafe",
         stroke: "#3b82f6",
         bg: "#f0f9ff",
-        tiles: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+        tiles: CARTO_TILES.LIGHT_NOLABELS
     },
     night: {
         name: "Nuit Noire",
         fill: "#020617",
         stroke: "#1e293b",
         bg: "#000000",
-        tiles: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png"
+        tiles: CARTO_TILES.DARK_NOLABELS
     }
 };
 

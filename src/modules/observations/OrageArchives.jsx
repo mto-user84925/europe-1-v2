@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Calendar, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
+import { CARTO_TILES } from '../../constants/carto';
 
 // Component to handle map center changes
 function MapController({ center }) {
@@ -135,7 +136,7 @@ const OrageArchives = () => {
                 >
                     <TileLayer
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                        url={CARTO_TILES.DARK_ALL}
                     />
 
                     <MapController center={[46.603354, 1.888334]} />

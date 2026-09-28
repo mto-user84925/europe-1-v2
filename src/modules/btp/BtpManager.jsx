@@ -563,37 +563,38 @@ Voici les données brutes :`;
             return;
         }
 
-        setStatus('Récupération des données...');
+        setStatus('⏳ Récupération des données Météo-France DPClim...');
         const prevMetadata = globalData?.__metadata || {};
         setGlobalData({}); // Reset current data
 
         try {
             // 1. Tenter l'historique horaire & DPClim direct
-            let history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, startDate, endDate);
+            let history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, startDate, endDate, (msg) => setStatus('⏳ ' + msg));
 
             const getLocalDateString = (date) => {
-                const y = date.getFullYear();
-                const m = String(date.getMonth() + 1).padStart(2, '0');
-                const d = String(date.getDate()).padStart(2, '0');
+                const dt = date instanceof Date ? date : new Date(date);
+                const y = dt.getFullYear();
+                const m = String(dt.getMonth() + 1).padStart(2, '0');
+                const d = String(dt.getDate()).padStart(2, '0');
                 return `${d}/${m}/${y}`;
             };
 
             if (!history || history.length === 0) {
-                setStatus('❌ Aucune donnée trouvée (Supabase/API/DPClim) pour cette période.');
+                setStatus('❌ Aucune donnée DPClim trouvée pour cette période.');
                 return;
             }
 
-
             const grouped = {};
             history.forEach(obs => {
-                const dayCA = new Date(obs.time).toLocaleDateString('fr-CA');
+                const dt = obs.time instanceof Date ? obs.time : new Date(obs.time);
+                const dayCA = obs.date || dt.toLocaleDateString('fr-CA');
                 if (dayCA < startDate || dayCA > endDate) return;
-                const dayKey = getLocalDateString(obs.time);
+                const dayKey = getLocalDateString(dt);
                 if (!grouped[dayKey]) grouped[dayKey] = [];
 
                 // Adapter format
                 grouped[dayKey].push({
-                    h: obs.time.getHours(),
+                    h: dt.getHours(),
                     temp: obs.temp,
                     rain: obs.rain || 0,
                     snow: 0, // Will be calculated if autoSnow is true

@@ -10,6 +10,7 @@ import { REGIONS, DEPARTMENTS } from "../../data/departments";
 import { MAIN_CITIES } from "../../data/mainCities";
 import './FoudreFrance.css';
 import { supabase } from '../../services/supabaseClient';
+import { CARTO_TILES } from '../../constants/carto';
 
 const HOUR_COLORS = [
     "#0000FF", "#0022FF", "#0044FF", "#0066FF", "#0088FF", "#00AAFF", // 0h-5h (Bleus)
@@ -21,9 +22,9 @@ const HOUR_COLORS = [
 const getHourColor = (h) => HOUR_COLORS[h] || "#ff0000";
 
 const MAP_PALETTES = {
-    dark: { name: "Sombre Pro", fill: "#1e293b", stroke: "#475569", bg: "#0f172a", tiles: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png" },
-    default: { name: "Classique", fill: "#f1f5f9", stroke: "#000", bg: "#ffffff", tiles: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png" },
-    blue: { name: "Océan", fill: "#dbeafe", stroke: "#000", bg: "#f0f9ff", tiles: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png" }
+    dark: { name: "Sombre Pro", fill: "#1e293b", stroke: "#475569", bg: "#0f172a", tiles: CARTO_TILES.DARK_NOLABELS },
+    default: { name: "Classique", fill: "#f1f5f9", stroke: "#000", bg: "#ffffff", tiles: CARTO_TILES.LIGHT_NOLABELS },
+    blue: { name: "Océan", fill: "#dbeafe", stroke: "#000", bg: "#f0f9ff", tiles: CARTO_TILES.LIGHT_NOLABELS }
 };
 
 const ALL_DEPTS = [...DEPARTMENTS.map(d => d.code), '2A', '2B'].filter((v, i, a) => a.indexOf(v) === i);

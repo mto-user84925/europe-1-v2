@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { Zap, Search, X, Crosshair, RefreshCw, Calendar, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import './FoudreFrance.css';
+import { CARTO_TILES } from '../../constants/carto';
 
 // const supabase = createClient(
 //     import.meta.env.VITE_SUPABASE_URL,
@@ -191,7 +192,7 @@ const FoudreCommunes = () => {
                 <main style={{ flex: 1, position: 'relative' }}>
                     <MapContainer center={[46.6, 2.2]} zoom={6} style={{ height: '100%' }} preferCanvas={true}>
                         {selectedLocation && <MapController center={[selectedLocation.lat, selectedLocation.lon]} zoom={10} />}
-                        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png" />
+                        <TileLayer url={CARTO_TILES.LIGHT_NOLABELS} />
                         <TileLayer url="https://api.metetclimat.ovh/tiles/mask_france/{z}/{x}/{y}.png" opacity={0.8} />
                         {selectedLocation && radii.map(r => (
                             <Circle key={r} center={[selectedLocation.lat, selectedLocation.lon]} radius={r * 1000} pathOptions={{ color: '#ef4444', weight: 1, dashArray: '5,5', fillOpacity: 0 }} />

@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import { Play, Pause, FastForward, Rewind, Info } from 'lucide-react';
 import clsx from 'clsx';
 import './RadarView.css';
+import { CARTO_TILES } from '../../constants/carto';
 import L from 'leaflet';
 
 // Fix Leaflet icons
@@ -108,9 +109,9 @@ export default function RadarView({ mode = 'france', type = 'radar' }) {
     // Base Map Provider
     const getBaseLayer = () => {
         switch (mapType) {
-            case 'light': return "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+            case 'light': return CARTO_TILES.LIGHT_ALL;
             case 'satellite': return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-            default: return "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+            default: return CARTO_TILES.DARK_ALL;
         }
     };
 

@@ -36,8 +36,32 @@ const AttestationIntemperieManager = () => {
     const [stations, setStations] = useState([]);
     const [selectedStationId, setSelectedStationId] = useState('');
     const [stationMeteo, setStationMeteo] = useState('');
+    const [stationMeteoTemp, setStationMeteoTemp] = useState('');
+    const [stationMeteoRain, setStationMeteoRain] = useState('');
+    const [stationMeteoWind, setStationMeteoWind] = useState('');
+    const [selectedStationIdTemp, setSelectedStationIdTemp] = useState('');
+    const [selectedStationIdRain, setSelectedStationIdRain] = useState('');
+    const [selectedStationIdWind, setSelectedStationIdWind] = useState('');
+    const [deptTemp, setDeptTemp] = useState('');
+    const [deptRain, setDeptRain] = useState('');
+    const [deptWind, setDeptWind] = useState('');
+    const [stationsTemp, setStationsTemp] = useState([]);
+    const [stationsRain, setStationsRain] = useState([]);
+    const [stationsWind, setStationsWind] = useState([]);
+    const [showDetailedStations, setShowDetailedStations] = useState(false);
     const [loadingStations, setLoadingStations] = useState(false);
     const [stationNames, setStationNames] = useState({});
+
+    // --- États d'import/fusion de fichiers CSV ---
+    const [showMergeModal, setShowMergeModal] = useState(false);
+    const [csvRowsParsed, setCsvRowsParsed] = useState([]);
+    const [csvStationId, setCsvStationId] = useState('');
+    const [csvStationName, setCsvStationName] = useState('');
+    const [csvDates, setCsvDates] = useState({ firstDate: null, lastDate: null });
+    const [mergeOptionTemp, setMergeOptionTemp] = useState(true);
+    const [mergeOptionRain, setMergeOptionRain] = useState(true);
+    const [mergeOptionWind, setMergeOptionWind] = useState(true);
+    const [mergeMode, setMergeMode] = useState('merge'); // 'merge' or 'overwrite'
 
     // --- Seuils de classification ---
     const [limitRain, setLimitRain] = useState(10);
@@ -89,9 +113,30 @@ const AttestationIntemperieManager = () => {
         }
     }, [startDate, isPeriod]);
 
+    // Synchro de stationMeteo (compatibilité Détaillé vs Global)
+    useEffect(() => {
+        if (showDetailedStations) {
+            const stTR = cleanStationName(stationMeteoTemp || stationMeteoRain);
+            const stW = cleanStationName(stationMeteoWind);
+            if (stTR === stW || !stW || stW === '—') {
+                if (stTR && stTR !== '—') setStationMeteo(stTR);
+            } else if (stTR || stW) {
+                setStationMeteo(`Température & Pluie : ${stTR || '—'} | Vent : ${stW || '—'}`);
+            }
+        }
+    }, [stationMeteoTemp, stationMeteoRain, stationMeteoWind, showDetailedStations]);
+
     // --- Chargement des stations ---
     useEffect(() => {
-        if (!selectedDept) { setStations([]); return; }
+        if (selectedDept) {
+            setDeptTemp(selectedDept);
+            setDeptRain(selectedDept);
+            setDeptWind(selectedDept);
+        }
+    }, [selectedDept]);
+
+    useEffect(() => {
+        if (!selectedDept) { setStations([]); setStationsTemp([]); setStationsRain([]); setStationsWind([]); return; }
         async function getStations() {
             setLoadingStations(true);
             try {
@@ -105,6 +150,9 @@ const AttestationIntemperieManager = () => {
                     data = filtered;
                 }
                 setStations(data);
+                setStationsTemp(data);
+                setStationsRain(data);
+                setStationsWind(data);
                 const names = { ...stationNames };
                 const { geoService } = await import('../../services/geoService');
                 for (const s of data) {
@@ -125,16 +173,40 @@ const AttestationIntemperieManager = () => {
         getStations();
     }, [selectedDept]);
 
+    const getStationsForDept = async (dept) => {
+        if (!dept) return [];
+        try {
+            let data = await weatherAPI.getDepartmentLatestHoraire(dept);
+            if (!data || data.length === 0) {
+                const stationNamesData = await import('../../data/stationNames.json');
+                const deptPrefix = (dept === '2A' || dept === '2B') ? '20' : dept;
+                data = Object.entries(stationNamesData.default || stationNamesData)
+                    .filter(([id]) => id.startsWith(deptPrefix))
+                    .map(([id, name]) => ({ station_id: id, nom_station: name }));
+            }
+            const names = { ...stationNames };
+            for (const s of data) {
+                const sid = s.station_id || s.id_station;
+                if (!names[sid] && s.nom_station) names[sid] = s.nom_station;
+            }
+            setStationNames(names);
+            return data;
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    };
+
     useEffect(() => {
         generateReport();
-    }, [globalData, docType, projectName, clientName, clientAddress, clientCity, clientZip, limitRain, limitTemp, limitWind, limitTempMax, refDossier, nearbyStations, showCharts, showPersonalization, isPeriod, startDate, endDate, expertConclusion, stationMeteo, customClassification]);
+    }, [globalData, docType, projectName, clientName, clientAddress, clientCity, clientZip, limitRain, limitTemp, limitWind, limitTempMax, refDossier, nearbyStations, showCharts, showPersonalization, isPeriod, startDate, endDate, expertConclusion, stationMeteo, customClassification, showDetailedStations, stationMeteoTemp, stationMeteoRain, stationMeteoWind]);
 
     // --- Monitoring Changes for Conclusion ---
     useEffect(() => {
         if (!isConclusionManual && globalData) {
             setExpertConclusion(generateAutoConclusion());
         }
-    }, [globalData, limitRain, limitTemp, limitWind, limitTempMax, excludeWeekends, showPersonalization, stationMeteo]);
+    }, [globalData, limitRain, limitTemp, limitWind, limitTempMax, excludeWeekends, showPersonalization, stationMeteo, stationMeteoTemp, stationMeteoRain, stationMeteoWind]);
 
     // --- Calcul stations proches ---
     useEffect(() => {
@@ -156,13 +228,41 @@ const AttestationIntemperieManager = () => {
             const cityLat = cityResults[0].lat;
             const cityLon = cityResults[0].lon;
 
-            const { data: dists, error } = await supabase.rpc('find_nearest_stations', {
-                lat_input: cityLat,
-                lon_input: cityLon,
-                limit_count: 10
-            });
+            // Calcul distances : Essai RPC Supabase puis Fallback 100% autonome local
+            let dists = null;
+            if (supabase) {
+                try {
+                    const { data, error } = await supabase.rpc('find_nearest_stations', {
+                        lat_input: cityLat,
+                        lon_input: cityLon,
+                        limit_count: 10
+                    });
+                    if (!error && data && data.length > 0) dists = data;
+                } catch (e) { }
+            }
 
-            if (error || !dists) return;
+            if (!dists || dists.length === 0) {
+                try {
+                    const stationsData = await import('../../data/stations_list.json');
+                    const list = stationsData.default?.features || stationsData.features || [];
+                    const R = 6371;
+                    dists = list.map(f => {
+                        const [lonS, latS] = f.geometry.coordinates;
+                        const dLat = (latS - cityLat) * Math.PI / 180;
+                        const dLon = (lonS - cityLon) * Math.PI / 180;
+                        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                            Math.cos(cityLat * Math.PI / 180) * Math.cos(latS * Math.PI / 180) *
+                            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                        const dKm = Math.round(R * c * 10) / 10;
+                        return { id: f.properties.num, name: f.properties.nom, dist_km: dKm };
+                    }).sort((a, b) => a.dist_km - b.dist_km).slice(0, 10);
+                } catch (e) {
+                    console.error("Erreur calcul stations proches local:", e);
+                }
+            }
+
+            if (!dists || dists.length === 0) return;
 
             const currentStation = dists.find(s => s.id === selectedStationId);
             if (currentStation) setSelectedStationDist(currentStation.dist_km);
@@ -189,7 +289,26 @@ const AttestationIntemperieManager = () => {
         } catch (e) { console.error(e); }
     };
 
-    // --- Récupération des données ---
+    const cleanStationName = (name) => {
+        if (!name) return '—';
+        let cleaned = String(name).replace(/\s*\(\d+\)/g, '').trim();
+        cleaned = cleaned.replace(/\s*\(\s*\d+\s*\)\s*$/g, '').trim();
+        cleaned = cleaned.replace(/^(Temp|Pluie|Vent|Température|Précipitations)\s*(&\s*(Pluie|Précipitations))?\s*:\s*/i, '').trim();
+        cleaned = cleaned.replace(/_/g, ' ');
+        return cleaned.trim();
+    };
+
+    const getStationDisplay = () => {
+        const stTempRain = cleanStationName(stationMeteoTemp || stationMeteoRain || stationNames[selectedStationIdTemp] || stationMeteo);
+        const stWind = cleanStationName(stationMeteoWind || stationNames[selectedStationIdWind] || stationMeteo);
+
+        if (stTempRain === stWind || !stWind || stWind === '—') {
+            return stTempRain;
+        }
+        return `Température & Pluie : ${stTempRain} | Vent : ${stWind}`;
+    };
+
+    // --- Récupération des données & Import CSV ---
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -206,71 +325,84 @@ const AttestationIntemperieManager = () => {
                 // Headers: POSTE;DATE;RR;TN;TX;FXI
                 const dataLines = lines.slice(1).filter(l => l.trim().length > 0);
 
-                const days = {};
+                const rows = [];
                 let firstDate = null;
                 let lastDate = null;
                 let stationId = '';
+
+                // On vérifie si les unités de vent sont en m/s ou km/h
+                // Si une valeur FXI > 40, on suppose que c'est déjà du km/h
+                let maxFxiSeen = 0;
+                dataLines.forEach(line => {
+                    const cols = line.trim().split(';');
+                    if (cols.length >= 6) {
+                        const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
+                        if (fxi > maxFxiSeen) maxFxiSeen = fxi;
+                    }
+                });
+                const windMultiplier = maxFxiSeen > 40 ? 1 : 3.6;
 
                 dataLines.forEach(line => {
                     const cols = line.trim().split(';');
                     if (cols.length < 5) return;
 
-                    const rawDate = cols[1]; // YYYYMMDD
-                    if (!rawDate || rawDate.length !== 8) return;
+                    const rawDate = cols[1]; // YYYYMMDD ou YYYYMMDDHH
+                    if (!rawDate || (rawDate.length !== 8 && rawDate.length !== 10)) return;
 
                     const year = parseInt(rawDate.substring(0, 4));
                     const month = parseInt(rawDate.substring(4, 6));
                     const day = parseInt(rawDate.substring(6, 8));
+                    const hour = rawDate.length === 10 ? parseInt(rawDate.substring(8, 10)) : 12;
+
+                    const dateObj = new Date(year, month - 1, day, hour, 0, 0);
+                    const datePure = new Date(year, month - 1, day);
                     const dateKey = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 
-                    const dateObj = new Date(year, month - 1, day);
-                    if (!firstDate || dateObj < firstDate) firstDate = dateObj;
-                    if (!lastDate || dateObj > lastDate) lastDate = dateObj;
+                    if (!firstDate || datePure < firstDate) firstDate = datePure;
+                    if (!lastDate || datePure > lastDate) lastDate = datePure;
 
                     stationId = cols[0];
 
                     const rr = parseFloat(cols[2]?.replace(',', '.')) || 0;
                     const tn = parseFloat(cols[3]?.replace(',', '.')) || 99;
                     const tx = parseFloat(cols[4]?.replace(',', '.')) || -99;
-                    const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
+                    const fxi = (parseFloat(cols[5]?.replace(',', '.')) || 0) * windMultiplier;
 
-                    days[dateKey] = {
-                        rows: [{
-                            time: dateObj,
-                            temp: (tn !== 99 && tx !== -99) ? (tn + tx) / 2 : (tn !== 99 ? tn : tx),
-                            rain: rr,
-                            gust: fxi * 3.6,
-                            w_gst: fxi * 3.6
-                        }],
-                        stats: {
-                            tmin: tn,
-                            tmax: tx,
-                            rainTotal: rr,
-                            gustMax: fxi * 3.6,
-                            gustTime: 'N/A'
-                        }
-                    };
+                    let tempVal = (tn !== 99 && tx !== -99) ? (tn + tx) / 2 : (tn !== 99 ? tn : tx);
+                    if (tempVal === 99 || tempVal === -99) tempVal = 0;
+
+                    rows.push({
+                        time: dateObj,
+                        dateKey,
+                        h: hour,
+                        temp: tempVal,
+                        tmin: tn !== 99 ? tn : null,
+                        tmax: tx !== -99 ? tx : null,
+                        rain: rr,
+                        w_avg: fxi,
+                        w_gst: fxi,
+                        rawFxi: fxi
+                    });
                 });
 
-                if (Object.keys(days).length === 0) throw new Error("Aucune donnée valide trouvée dans le fichier.");
+                if (rows.length === 0) throw new Error("Aucune donnée valide trouvée dans le fichier.");
 
-                setGlobalData(days);
-                setSelectedStationId(stationId);
-                setStationMeteo(`Import CSV (${stationId})`);
+                rows.sort((a, b) => a.time - b.time);
 
-                // Sync dates UI
-                setStartDate(firstDate.toISOString().split('T')[0]);
-                if (Object.keys(days).length > 1) {
-                    setIsPeriod(true);
-                    setEndDate(lastDate.toISOString().split('T')[0]);
+                setCsvRowsParsed(rows);
+                setCsvStationId(stationId);
+                const sName = stationNames[stationId] || stationId;
+                setCsvStationName(sName);
+                setCsvDates({ firstDate, lastDate });
+
+                if (globalData && Object.keys(globalData).length > 0) {
+                    setMergeMode('merge');
                 } else {
-                    setIsPeriod(false);
-                    setEndDate(firstDate.toISOString().split('T')[0]);
+                    setMergeMode('overwrite');
                 }
 
-                setStatus(`✅ ${Object.keys(days).length} jours importés avec succès depuis le fichier.`);
-
-                // Trigger client/city info update if available in data? No, stay with manual entry.
+                setShowMergeModal(true);
+                setStatus('⏳ Fichier CSV analysé. Veuillez configurer les options de fusion dans la fenêtre.');
             } catch (err) {
                 console.error(err);
                 setStatus('❌ Erreur Import : ' + err.message);
@@ -280,88 +412,349 @@ const AttestationIntemperieManager = () => {
         reader.readAsText(file);
     };
 
+    // --- Validation et fusion des données CSV ---
+    const handleConfirmMerge = () => {
+        try {
+            if (csvRowsParsed.length === 0) return;
+
+            const finalStationName = csvStationName.trim() || csvStationId;
+            let firstDate = csvDates.firstDate;
+            let lastDate = csvDates.lastDate;
+
+            // Grouper les lignes CSV par jour
+            const csvDays = {};
+            csvRowsParsed.forEach(row => {
+                const k = row.dateKey;
+                if (!csvDays[k]) {
+                    csvDays[k] = {
+                        rows: [],
+                        tmin: 99,
+                        tmax: -99,
+                        rainTotal: 0,
+                        gustMax: 0,
+                        gustTime: 'N/A'
+                    };
+                }
+                csvDays[k].rows.push(row);
+                if (row.tmin !== null && row.tmin < csvDays[k].tmin) csvDays[k].tmin = row.tmin;
+                if (row.tmax !== null && row.tmax > csvDays[k].tmax) csvDays[k].tmax = row.tmax;
+                if (row.tmin === null && row.tmax === null && row.temp !== 0) {
+                    if (row.temp < csvDays[k].tmin) csvDays[k].tmin = row.temp;
+                    if (row.temp > csvDays[k].tmax) csvDays[k].tmax = row.temp;
+                }
+                csvDays[k].rainTotal += (row.rain || 0);
+                if (row.w_gst > csvDays[k].gustMax) {
+                    csvDays[k].gustMax = row.w_gst;
+                    csvDays[k].gustTime = `${row.h}h`;
+                }
+            });
+
+            let finalDays = {};
+
+            if (mergeMode === 'overwrite' || !globalData || Object.keys(globalData).length === 0) {
+                // Mode écrasement : créer les données à partir du CSV avec les paramètres sélectionnés
+                Object.keys(csvDays).forEach(k => {
+                    const cd = csvDays[k];
+                    const tmin = mergeOptionTemp ? (cd.tmin !== 99 ? cd.tmin : 0) : 0;
+                    const tmax = mergeOptionTemp ? (cd.tmax !== -99 ? cd.tmax : 0) : 0;
+                    const rainTotal = mergeOptionRain ? cd.rainTotal : 0;
+                    const gustMax = mergeOptionWind ? cd.gustMax : 0;
+                    const gustTime = mergeOptionWind ? cd.gustTime : 'N/A';
+
+                    finalDays[k] = {
+                        rows: cd.rows.map(r => ({
+                            time: r.time,
+                            temp: mergeOptionTemp ? r.temp : 0,
+                            rain: mergeOptionRain ? r.rain : 0,
+                            gust: mergeOptionWind ? r.w_gst : 0,
+                            w_gst: mergeOptionWind ? r.w_gst : 0
+                        })),
+                        stats: {
+                            tmin,
+                            tmax,
+                            rainTotal,
+                            gustMax,
+                            gustTime
+                        }
+                    };
+                });
+            } else {
+                // Mode fusion : mettre à jour seulement les paramètres sélectionnés
+                finalDays = { ...globalData };
+
+                Object.keys(csvDays).forEach(k => {
+                    const cd = csvDays[k];
+                    if (finalDays[k]) {
+                        const day = { ...finalDays[k] };
+                        const s = { ...day.stats };
+
+                        if (mergeOptionTemp) {
+                            if (cd.tmin !== 99) s.tmin = cd.tmin;
+                            if (cd.tmax !== -99) s.tmax = cd.tmax;
+                        }
+                        if (mergeOptionRain) {
+                            s.rainTotal = cd.rainTotal;
+                        }
+                        if (mergeOptionWind) {
+                            s.gustMax = cd.gustMax;
+                            s.gustTime = cd.gustTime;
+                        }
+
+                        if (day.rows && day.rows.length > 0) {
+                            day.rows = day.rows.map(r => ({
+                                ...r,
+                                temp: mergeOptionTemp ? ((s.tmin !== 99 && s.tmax !== -99) ? (s.tmin + s.tmax) / 2 : r.temp) : r.temp,
+                                rain: mergeOptionRain ? cd.rainTotal / day.rows.length : r.rain,
+                                gust: mergeOptionWind ? cd.gustMax : (r.gust || 0),
+                                w_gst: mergeOptionWind ? cd.gustMax : (r.w_gst || 0)
+                            }));
+                        } else {
+                            day.rows = [{
+                                time: cd.rows[0]?.time || new Date(k),
+                                temp: (s.tmin !== 99 && s.tmax !== -99) ? (s.tmin + s.tmax) / 2 : 0,
+                                rain: s.rainTotal,
+                                gust: s.gustMax,
+                                w_gst: s.gustMax
+                            }];
+                        }
+
+                        day.stats = s;
+                        finalDays[k] = day;
+                    } else {
+                        finalDays[k] = {
+                            rows: cd.rows.map(r => ({
+                                time: r.time,
+                                temp: mergeOptionTemp ? r.temp : 0,
+                                rain: mergeOptionRain ? r.rain : 0,
+                                gust: mergeOptionWind ? r.w_gst : 0,
+                                w_gst: mergeOptionWind ? r.w_gst : 0
+                            })),
+                            stats: {
+                                tmin: mergeOptionTemp ? (cd.tmin !== 99 ? cd.tmin : 0) : 0,
+                                tmax: mergeOptionTemp ? (cd.tmax !== -99 ? cd.tmax : 0) : 0,
+                                rainTotal: mergeOptionRain ? cd.rainTotal : 0,
+                                gustMax: mergeOptionWind ? cd.gustMax : 0,
+                                gustTime: mergeOptionWind ? cd.gustTime : 'N/A'
+                            }
+                        };
+                    }
+                });
+
+                const allKeys = Object.keys(finalDays).sort();
+                if (allKeys.length > 0) {
+                    firstDate = new Date(allKeys[0]);
+                    lastDate = new Date(allKeys[allKeys.length - 1]);
+                }
+            }
+
+            setGlobalData(finalDays);
+
+            // Mise à jour des noms de stations
+            if (mergeOptionTemp) setStationMeteoTemp(finalStationName);
+            if (mergeOptionRain) setStationMeteoRain(finalStationName);
+            if (mergeOptionWind) setStationMeteoWind(finalStationName);
+
+            if (!(mergeOptionTemp && mergeOptionRain && mergeOptionWind)) {
+                setShowDetailedStations(true);
+            }
+
+            setSelectedStationId(csvStationId);
+            setStationMeteo(prev => {
+                if (mergeMode === 'overwrite' || !prev) {
+                    return `Import CSV (${finalStationName})`;
+                }
+                return `${prev} + CSV (${finalStationName})`;
+            });
+
+            // Synchroniser les dates
+            const sortedDates = Object.keys(finalDays).sort();
+            if (sortedDates.length > 0) {
+                setStartDate(sortedDates[0]);
+                if (sortedDates.length > 1) {
+                    setIsPeriod(true);
+                    setEndDate(sortedDates[sortedDates.length - 1]);
+                } else {
+                    setIsPeriod(false);
+                    setEndDate(sortedDates[0]);
+                }
+            }
+
+            setStatus(`✅ Données CSV intégrées avec succès (${Object.keys(finalDays).length} jours).`);
+            setShowMergeModal(false);
+        } catch (err) {
+            console.error(err);
+            setStatus('❌ Erreur Fusion : ' + err.message);
+        }
+    };
+
     const handleFetchData = async () => {
-        if (!selectedStationId || !startDate) {
-            setStatus('⚠️ Sélectionnez une station et une date.');
+        const stTemp = (showDetailedStations && selectedStationIdTemp) ? selectedStationIdTemp : selectedStationId;
+        const stRain = (showDetailedStations && selectedStationIdRain) ? selectedStationIdRain : selectedStationId;
+        const stWind = (showDetailedStations && selectedStationIdWind) ? selectedStationIdWind : selectedStationId;
+
+        const uniqueStationIds = Array.from(new Set([stTemp, stRain, stWind].filter(Boolean)));
+        if (uniqueStationIds.length === 0 || !startDate) {
+            setStatus('⚠️ Sélectionnez au moins une station et une date.');
             return;
         }
 
         const finalEndDate = isPeriod ? endDate : startDate;
-        setStatus('⏳ Récupération des données...');
+        setStatus('⏳ Récupération des données Météo-France (DPClim)...');
         setGlobalData(null);
 
         try {
             const todayStr = new Date().toISOString().split('T')[0];
             const isSingleDayToday = startDate === todayStr && finalEndDate === todayStr;
 
-            let history = [];
-
-            // Si c'est aujourd'hui : données 6mn haute précision en temps réel
-            if (isSingleDayToday) {
-                const day6mn = await weatherAPI.getStation6mnHistory(selectedStationId, new Date(startDate));
-                if (day6mn && day6mn.length > 0) {
-                    for (let h = 0; h < 24; h++) {
-                        const sub = day6mn.filter(d => d.time.getHours() === h);
-                        if (sub.length > 0) {
-                            history.push({
-                                time: sub[sub.length - 1].time,
-                                temp: Math.max(...sub.map(d => d.temp ?? -99)),
-                                rain: sub.reduce((acc, d) => acc + (d.rain || 0), 0),
-                                wind: Math.max(...sub.map(d => d.wind || 0)),
-                                gust: Math.max(...sub.map(d => d.gust || 0)),
-                                hum: sub[sub.length - 1].hum,
-                                pres: sub[sub.length - 1].pressure
-                            });
+            const fetchHistoryForStation = async (stationId) => {
+                let hist = [];
+                if (isSingleDayToday) {
+                    const day6mn = await weatherAPI.getStation6mnHistory(stationId, new Date(startDate));
+                    if (day6mn && day6mn.length > 0) {
+                        for (let h = 0; h < 24; h++) {
+                            const sub = day6mn.filter(d => d.time.getHours() === h);
+                            if (sub.length > 0) {
+                                hist.push({
+                                    time: sub[sub.length - 1].time,
+                                    temp: Math.max(...sub.map(d => d.temp ?? -99)),
+                                    rain: sub.reduce((acc, d) => acc + (d.rain || 0), 0),
+                                    wind: Math.max(...sub.map(d => d.wind || 0)),
+                                    gust: Math.max(...sub.map(d => d.gust || 0)),
+                                    hum: sub[sub.length - 1].hum,
+                                    pres: sub[sub.length - 1].pressure
+                                });
+                            }
                         }
                     }
                 }
+                if (hist.length === 0) {
+                    const sName = stationNames[stationId] || stationId;
+                    hist = await weatherAPI.getStationHourlyHistoryRange(stationId, startDate, finalEndDate, (msg) => setStatus(`⏳ [${sName}] ${msg}`));
+                }
+                return hist || [];
+            };
+
+            const stationHistories = {};
+            for (const stId of uniqueStationIds) {
+                const sName = stationNames[stId] || stId;
+                setStatus(`⏳ Récupération DPClim (${sName})...`);
+                stationHistories[stId] = await fetchHistoryForStation(stId);
             }
 
-            // Pour toute période historique (ex: Janvier 2026, 1950 à hier) : appel direct global rapide
-            if (history.length === 0) {
-                history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, startDate, finalEndDate);
-            }
+            const indexHistoryByDay = (hist) => {
+                const dayMap = {};
+                hist.forEach(obs => {
+                    const dt = obs.time instanceof Date ? obs.time : new Date(obs.time);
+                    const dateKey = obs.date || dt.toLocaleDateString('fr-CA');
+                    if (dateKey < startDate || dateKey > finalEndDate) return;
+                    if (!dayMap[dateKey]) {
+                        dayMap[dateKey] = {
+                            rows: [],
+                            tmin: 99,
+                            tmax: -99,
+                            rainTotal: 0,
+                            gustMax: 0,
+                            gustTime: ''
+                        };
+                    }
+                    const t = (obs.temp !== undefined && obs.temp !== null && !isNaN(obs.temp) && obs.temp > -90) ? obs.temp : null;
+                    if (t !== null) {
+                        dayMap[dateKey].tmin = Math.min(dayMap[dateKey].tmin, t);
+                        dayMap[dateKey].tmax = Math.max(dayMap[dateKey].tmax, t);
+                    }
+                    dayMap[dateKey].rainTotal += (obs.rain || 0);
+                    const g = obs.gust || obs.w_gst || 0;
+                    if (g > dayMap[dateKey].gustMax) {
+                        dayMap[dateKey].gustMax = g;
+                        const d = new Date(obs.time);
+                        dayMap[dateKey].gustTime = d.getHours() + 'h' + (d.getMinutes() > 0 ? d.getMinutes() : '');
+                    }
+                    dayMap[dateKey].rows.push(obs);
+                });
+                return dayMap;
+            };
 
-            if (!history || history.length === 0) {
-                setStatus('❌ Aucune donnée trouvée (Supabase/API/DPClim) pour cette période.');
+            const tempDays = indexHistoryByDay(stationHistories[stTemp] || []);
+            const rainDays = indexHistoryByDay(stationHistories[stRain] || []);
+            const windDays = indexHistoryByDay(stationHistories[stWind] || []);
+
+            const allDateKeys = Array.from(new Set([
+                ...Object.keys(tempDays),
+                ...Object.keys(rainDays),
+                ...Object.keys(windDays)
+            ])).sort();
+
+            if (allDateKeys.length === 0) {
+                setStatus('❌ Aucune donnée DPClim trouvée pour cette période sur les postes sélectionnés.');
                 return;
             }
 
-            // Groupement par jour pour le rapport par seuils
-            const days = {};
-            history.forEach(obs => {
-                const dateKey = new Date(obs.time).toLocaleDateString('fr-CA');
-                if (dateKey < startDate || dateKey > finalEndDate) return;
-                if (!days[dateKey]) {
-                    days[dateKey] = {
-                        rows: [],
-                        stats: { tmin: 99, tmax: -99, rainTotal: 0, gustMax: 0, gustTime: '' }
+            const combinedDays = {};
+            allDateKeys.forEach(dateKey => {
+                const tDay = tempDays[dateKey];
+                const rDay = rainDays[dateKey];
+                const wDay = windDays[dateKey];
+
+                // Alignement précis heure par heure entre stations distinctes (ex: Temp/Pluie Chantonnay + Vent Pouzauges)
+                const allHours = Array.from(new Set([
+                    ...(tDay?.rows || []).map(r => (r.time instanceof Date ? r.time : new Date(r.time)).getHours()),
+                    ...(rDay?.rows || []).map(r => (r.time instanceof Date ? r.time : new Date(r.time)).getHours()),
+                    ...(wDay?.rows || []).map(r => (r.time instanceof Date ? r.time : new Date(r.time)).getHours())
+                ])).sort((a, b) => a - b);
+
+                const getRowForHour = (rows, h) => (rows || []).find(r => (r.time instanceof Date ? r.time : new Date(r.time)).getHours() === h);
+
+                const combinedRows = (allHours.length > 0 ? allHours : [6, 10, 14, 18]).map(h => {
+                    const tRow = getRowForHour(tDay?.rows, h);
+                    const rRow = getRowForHour(rDay?.rows, h);
+                    const wRow = getRowForHour(wDay?.rows, h);
+                    const anyRow = tRow || rRow || wRow;
+                    const rTime = anyRow ? anyRow.time : new Date(`${dateKey}T${String(h).padStart(2, '0')}:00:00`);
+
+                    return {
+                        time: rTime,
+                        temp: tRow && tRow.temp !== undefined && tRow.temp !== null ? tRow.temp : 0,
+                        rain: rRow && rRow.rain !== undefined && rRow.rain !== null ? rRow.rain : 0,
+                        gust: wRow ? (wRow.gust || wRow.w_gst || 0) : 0,
+                        w_gst: wRow ? (wRow.w_gst || wRow.gust || 0) : 0
                     };
-                }
-                const t = (obs.temp !== undefined && obs.temp > -90) ? obs.temp : 99;
-                if (t !== 99) {
-                    days[dateKey].stats.tmin = Math.min(days[dateKey].stats.tmin, t);
-                    days[dateKey].stats.tmax = Math.max(days[dateKey].stats.tmax, t);
-                }
-                days[dateKey].stats.rainTotal += (obs.rain || 0);
-                const g = obs.gust || obs.w_gst || 0;
-                if (g > days[dateKey].stats.gustMax) {
-                    days[dateKey].stats.gustMax = g;
-                    const d = new Date(obs.time);
-                    days[dateKey].stats.gustTime = d.getHours() + 'h' + (d.getMinutes() > 0 ? d.getMinutes() : '');
-                }
-                days[dateKey].rows.push(obs);
+                });
+
+                combinedDays[dateKey] = {
+                    rows: combinedRows,
+                    stats: {
+                        tmin: tDay && tDay.tmin !== 99 ? tDay.tmin : 0,
+                        tmax: tDay && tDay.tmax !== -99 ? tDay.tmax : 0,
+                        rainTotal: rDay ? rDay.rainTotal : 0,
+                        gustMax: wDay ? wDay.gustMax : 0,
+                        gustTime: wDay ? wDay.gustTime : 'N/A'
+                    }
+                };
             });
 
             // Tri des lignes par heure pour chaque jour
-            Object.keys(days).forEach(dk => {
-                days[dk].rows.sort((a, b) => new Date(a.time) - new Date(b.time));
+            Object.keys(combinedDays).forEach(dk => {
+                combinedDays[dk].rows.sort((a, b) => new Date(a.time) - new Date(b.time));
             });
 
-            setGlobalData(days);
-            const name = stationNames[selectedStationId] || selectedStationId;
-            setStationMeteo(`${name} (${selectedStationId})`);
-            setStatus(`✅ ${Object.keys(days).length} jours chargés avec succès.`);
+            setGlobalData(combinedDays);
+
+            const nameTemp = cleanStationName(stationMeteoTemp || stationNames[stTemp] || stTemp);
+            const nameWind = cleanStationName(stationMeteoWind || stationNames[stWind] || stWind);
+
+            if (showDetailedStations && (stTemp !== stWind)) {
+                setStationMeteoTemp(nameTemp);
+                setStationMeteoRain(nameTemp);
+                setStationMeteoWind(nameWind);
+                setStationMeteo(`Température & Pluie : ${nameTemp} | Vent : ${nameWind}`);
+            } else {
+                setStationMeteo(nameTemp);
+                setStationMeteoTemp(nameTemp);
+                setStationMeteoRain(nameTemp);
+                setStationMeteoWind(nameTemp);
+            }
+
+            setStatus(`✅ ${allDateKeys.length} jours chargés avec succès via DPClim.`);
             refreshNearbyStations(startDate, finalEndDate);
 
         } catch (e) {
@@ -483,8 +876,8 @@ const AttestationIntemperieManager = () => {
                     <span class="cert-info-val">${dateLabel}</span>
                 </div>
                 <div class="cert-info-row" style="margin-bottom: 0; flex: 1; justify-content: flex-end;">
-                    <span class="cert-info-label" style="width: auto; margin-right: 10px; font-weight:bold;">POSTE DE RÉFÉRENCE :</span>
-                    <span class="cert-info-val">${stationMeteo}</span>
+                    <span class="cert-info-label" style="width: auto; margin-right: 10px; font-weight:bold;">POSTE(S) DE RÉFÉRENCE :</span>
+                    <span class="cert-info-val">${getStationDisplay()}</span>
                 </div>
             </div>
         `;
@@ -507,7 +900,17 @@ const AttestationIntemperieManager = () => {
                     <strong>Vent &ge; ${limitWind} km/h</strong>.
                 </div>
 
-                <table class="cert-table">
+                <div style="margin-top:8px; padding:6px 12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:4px; font-size:8.5pt; color:#1e293b; line-height:1.4;">
+                    <strong>POSTES DE RÉFÉRENCE :</strong>&nbsp;&nbsp;
+                    ${(cleanStationName(stationMeteoTemp || stationMeteo) === cleanStationName(stationMeteoWind || stationMeteo) || !stationMeteoWind || cleanStationName(stationMeteoWind) === '—') ? `
+                        <strong>${cleanStationName(stationMeteoTemp || stationMeteo)}</strong> (Température, Précipitations, Vent)
+                    ` : `
+                        🌡️🌧️ <strong>Température & Précipitations :</strong> ${cleanStationName(stationMeteoTemp || stationMeteoRain || stationMeteo)}&nbsp;&nbsp;|&nbsp;&nbsp;
+                        💨 <strong>Vent & Rafales :</strong> ${cleanStationName(stationMeteoWind || stationMeteo)}
+                    `}
+                </div>
+
+                <table class="cert-table" style="margin-top:10px;">
                     <thead>
                         <tr style="background:#f1f5f9;">
                             <th style="text-align:left;">PHÉNOMÈNE</th>
@@ -536,7 +939,7 @@ const AttestationIntemperieManager = () => {
                         ${countIntemperieDays()} JOUR(S) D'INTEMPÉRIES IDENTIFIÉ(S)
                     </div>
                     <div style="font-size: 8pt; color: #64748b; margin-top: 3px;">
-                        Station de ${stationMeteo} | Période du ${startD.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} au ${endD.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        Postes de référence : ${getStationDisplay()} | Période du ${startD.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} au ${endD.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </div>
                 </div>
             </div>
@@ -570,10 +973,10 @@ const AttestationIntemperieManager = () => {
                         <thead>
                             <tr>
                                 <th style="text-align:left; border: 1px solid #000;">Date</th>
-                                <th style="border: 1px solid #000;">Pluie(mm)</th>
-                                <th style="border: 1px solid #000;">T&deg;mini</th>
-                                <th style="border: 1px solid #000;">T&deg;maxi</th>
-                                <th style="border: 1px solid #000;">Rafales</th>
+                                <th style="border: 1px solid #000;">Pluie (mm)<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoRain || stationMeteoTemp || stationMeteo)}</span></th>
+                                <th style="border: 1px solid #000;">T&deg;mini<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
+                                <th style="border: 1px solid #000;">T&deg;maxi<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
+                                <th style="border: 1px solid #000;">Rafales<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -661,10 +1064,10 @@ const AttestationIntemperieManager = () => {
                         <thead>
                             <tr style="background:#003366; color:white;">
                                 <th style="border:1px solid #000;">DATE</th>
-                                <th style="border:1px solid #000;">T. MIN (&deg;C)</th>
-                                <th style="border:1px solid #000;">T. MAX (&deg;C)</th>
-                                <th style="border:1px solid #000;">PLUIE (MM)</th>
-                                <th style="border:1px solid #000;">VENT MAX (KM/H)</th>
+                                <th style="border:1px solid #000;">T. MIN (&deg;C)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
+                                <th style="border:1px solid #000;">T. MAX (&deg;C)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
+                                <th style="border:1px solid #000;">PLUIE (MM)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoRain || stationMeteoTemp || stationMeteo)}</span></th>
+                                <th style="border:1px solid #000;">VENT MAX (KM/H)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
                                 <th style="border:1px solid #000;">STATUT</th>
                             </tr>
                         </thead>
@@ -704,7 +1107,7 @@ const AttestationIntemperieManager = () => {
             <div class="cert-page">
                 <div class="cert-main-title-box" style="margin-bottom: 20px; border: 2px solid #000; padding: 10px; background: #fff;">
                     <h2 style="font-size: 13pt; margin:0; color:#003366; text-transform:uppercase; font-weight: 800;">ANNEXE 3 : ÉVOLUTION GRAPHIQUE</h2>
-                    <div style="font-size: 9.5pt; margin-top:5px; color:#64748b;">Station : ${stationMeteo} (${selectedStationId})</div>
+                    <div style="font-size: 9.5pt; margin-top:5px; color:#64748b;">Postes de référence : ${getStationDisplay()}</div>
                 </div>
                 <div style="height: 500px; width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; background: #fff; box-sizing: border-box;">
                     <canvas id="cert-chart-main"></canvas>
@@ -976,6 +1379,88 @@ const AttestationIntemperieManager = () => {
         return expertConclusion || generateAutoConclusion();
     };
 
+    const printContent = (contentHtml) => {
+        try {
+            const existingFrame = document.getElementById('btp-print-iframe');
+            if (existingFrame) existingFrame.remove();
+
+            const iframe = document.createElement('iframe');
+            iframe.id = 'btp-print-iframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            iframe.style.visibility = 'hidden';
+            document.body.appendChild(iframe);
+
+            const doc = iframe.contentWindow?.document || iframe.contentDocument;
+            if (!doc) {
+                fallbackPopupPrint(contentHtml);
+                return;
+            }
+
+            doc.open();
+            doc.write(`<!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Attestation d'Intempéries - Météo Climat Pro</title>
+                    ${getCommonStyles()}
+                </head>
+                <body>
+                    ${contentHtml}
+                </body>
+                </html>`);
+            doc.close();
+
+            setTimeout(() => {
+                try {
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                } catch (e) {
+                    console.warn("Iframe print bloqué, passage en popup:", e);
+                    fallbackPopupPrint(contentHtml);
+                }
+            }, 400);
+        } catch (e) {
+            console.error("Erreur iframe print:", e);
+            fallbackPopupPrint(contentHtml);
+        }
+    };
+
+    const fallbackPopupPrint = (contentHtml) => {
+        try {
+            const win = window.open('', '_blank');
+            if (!win) {
+                // Fallback direct sur l'impression de la page actuelle
+                window.print();
+                return;
+            }
+            win.document.open();
+            win.document.write(`<!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Attestation d'Intempéries</title>
+                    ${getCommonStyles()}
+                </head>
+                <body>
+                    ${contentHtml}
+                </body>
+                </html>`);
+            win.document.close();
+            setTimeout(() => {
+                win.focus();
+                win.print();
+            }, 600);
+        } catch (err) {
+            console.error("Fallback popup error:", err);
+            window.print();
+        }
+    };
+
     const handlePrintPart = (part) => {
         if (!globalData) return;
         let content = '';
@@ -999,31 +1484,68 @@ const AttestationIntemperieManager = () => {
         }
 
         if (needsChart) {
-            const canvas = document.getElementById('cert-chart-main');
-            if (canvas) {
-                const chartImg = canvas.toDataURL('image/png', 1.0);
-                content = content.replace(
-                    /<canvas[^>]*id=\"cert-chart-main\"[^>]*><\/canvas>/i,
-                    `<img src="${chartImg}" style="width:100%; height:auto; display:block; margin: 0 auto;" />`
-                );
+            try {
+                const canvas = document.getElementById('cert-chart-main');
+                if (canvas) {
+                    const chartImg = canvas.toDataURL('image/png', 1.0);
+                    content = content.replace(
+                        /<canvas[^>]*id=\"cert-chart-main\"[^>]*><\/canvas>/i,
+                        `<img src="${chartImg}" style="width:100%; height:auto; display:block; margin: 0 auto;" />`
+                    );
+                }
+            } catch (err) {
+                console.warn("Canvas export warning:", err);
             }
         }
 
-        const win = window.open('', '_blank');
-        win.document.write('<html><head><title>Imprimer</title>');
-        win.document.write(getCommonStyles());
-        win.document.write('</head><body>');
-        win.document.write(content);
-        win.document.write('</body></html>');
-        win.document.close();
-
-        setTimeout(() => {
-            win.focus();
-            win.print();
-        }, 800);
+        printContent(content);
     };
 
     const handlePrint = () => handlePrintPart('all');
+
+    const handleExportPDF = async () => {
+        if (!globalData) return;
+        setStatus('⏳ Préparation du téléchargement PDF...');
+        try {
+            const previewEl = document.querySelector('.btp-full-report-preview');
+            if (!previewEl) {
+                handlePrint();
+                return;
+            }
+
+            const pages = previewEl.querySelectorAll('.cert-page');
+            if (!pages || pages.length === 0) {
+                handlePrint();
+                return;
+            }
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = 210;
+            const pdfHeight = 297;
+
+            for (let i = 0; i < pages.length; i++) {
+                if (i > 0) pdf.addPage('a4', 'p');
+                setStatus(`⏳ Rendu PDF : page ${i + 1} sur ${pages.length}...`);
+                const pageCanvas = await html2canvas(pages[i], {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff'
+                });
+                const imgData = pageCanvas.toDataURL('image/jpeg', 0.95);
+                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            }
+
+            const safeCity = (clientCity || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const fileName = `Attestation_${safeCity}_${startDate}_${refDossier || 'Dossier'}.pdf`;
+            pdf.save(fileName);
+            setStatus('✅ Attestation PDF téléchargée avec succès !');
+        } catch (e) {
+            console.error("Erreur génération PDF:", e);
+            setStatus("⚠️ Échec du téléchargement PDF. Ouverture de la fenêtre d'impression...");
+            handlePrint();
+        }
+    };
 
     const handleSaveToDB = async () => {
         if (!globalData) return;
@@ -1036,7 +1558,22 @@ const AttestationIntemperieManager = () => {
                 periode_fin: isPeriod ? endDate : startDate,
                 station: selectedStationId,
                 type_document: parseInt(docType),
-                seuils_json: { rain: limitRain, temp: limitTemp, wind: limitWind },
+                seuils_json: { 
+                    rain: limitRain, 
+                    temp: limitTemp, 
+                    wind: limitWind,
+                    stationMeteo,
+                    stationMeteoTemp,
+                    stationMeteoRain,
+                    stationMeteoWind,
+                    selectedStationIdTemp,
+                    selectedStationIdRain,
+                    selectedStationIdWind,
+                    deptTemp,
+                    deptRain,
+                    deptWind,
+                    showDetailedStations
+                },
                 nb_jours_intemperies: count,
                 date_generation: new Date()
             };
@@ -1100,6 +1637,17 @@ const AttestationIntemperieManager = () => {
             setLimitRain(a.seuils_json.rain || 10);
             setLimitTemp(a.seuils_json.temp || 0);
             setLimitWind(a.seuils_json.wind || 60);
+            if (a.seuils_json.stationMeteo) setStationMeteo(a.seuils_json.stationMeteo);
+            if (a.seuils_json.stationMeteoTemp) setStationMeteoTemp(a.seuils_json.stationMeteoTemp);
+            if (a.seuils_json.stationMeteoRain) setStationMeteoRain(a.seuils_json.stationMeteoRain);
+            if (a.seuils_json.stationMeteoWind) setStationMeteoWind(a.seuils_json.stationMeteoWind);
+            if (a.seuils_json.selectedStationIdTemp) setSelectedStationIdTemp(a.seuils_json.selectedStationIdTemp);
+            if (a.seuils_json.selectedStationIdRain) setSelectedStationIdRain(a.seuils_json.selectedStationIdRain);
+            if (a.seuils_json.selectedStationIdWind) setSelectedStationIdWind(a.seuils_json.selectedStationIdWind);
+            if (a.seuils_json.deptTemp) setDeptTemp(a.seuils_json.deptTemp);
+            if (a.seuils_json.deptRain) setDeptRain(a.seuils_json.deptRain);
+            if (a.seuils_json.deptWind) setDeptWind(a.seuils_json.deptWind);
+            if (a.seuils_json.showDetailedStations !== undefined) setShowDetailedStations(a.seuils_json.showDetailedStations);
         }
         setShowArchivesModal(false);
         setStatus(`📂 Archive chargée : ${a.ville} (${a.periode_debut})`);
@@ -1203,23 +1751,232 @@ const AttestationIntemperieManager = () => {
                             <div className="btp-form-group">
                                 <label>Station Météo de référence</label>
                                 <select value={selectedStationId} onChange={(e) => {
-                                    setSelectedStationId(e.target.value);
-                                    const name = stationNames[e.target.value] || e.target.value;
-                                    setStationMeteo(`${name} (${e.target.value})`);
+                                    const val = e.target.value;
+                                    setSelectedStationId(val);
+                                    const name = stationNames[val] || val;
+                                    const clean = cleanStationName(name);
+                                    setStationMeteo(clean);
+                                    if (!showDetailedStations) {
+                                        setSelectedStationIdTemp(val);
+                                        setSelectedStationIdRain(val);
+                                        setSelectedStationIdWind(val);
+                                        setStationMeteoTemp(clean);
+                                        setStationMeteoRain(clean);
+                                        setStationMeteoWind(clean);
+                                    }
                                 }} disabled={loadingStations}>
                                     <option value="">{loadingStations ? 'Chargement...' : '-- Sélectionner une station --'}</option>
                                     {stations.map(s => <option key={s.station_id} value={s.station_id}>{stationNames[s.station_id] || s.station_id} ({s.station_id})</option>)}
                                 </select>
                             </div>
-                            <div className="btp-form-group">
-                                <label>Désignation station (Éditable)</label>
-                                <input
-                                    type="text"
-                                    value={stationMeteo}
-                                    onChange={e => setStationMeteo(e.target.value)}
-                                    placeholder="Nom de la station tel qu'il apparaîtra"
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', marginBottom: '8px' }}>
+                                <input 
+                                    type="checkbox" 
+                                    id="chk-show-detailed-stations"
+                                    checked={showDetailedStations} 
+                                    onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        setShowDetailedStations(checked);
+                                        const defaultSingle = stationNames[selectedStationId] ? cleanStationName(stationNames[selectedStationId]) : (cleanStationName(stationMeteo) || '');
+                                        if (checked) {
+                                            if (!selectedStationIdTemp) setSelectedStationIdTemp(selectedStationId);
+                                            if (!selectedStationIdRain) setSelectedStationIdRain(selectedStationId);
+                                            if (!selectedStationIdWind) setSelectedStationIdWind(selectedStationId);
+                                            if (!stationMeteoTemp || stationMeteoTemp.includes('Temp:')) setStationMeteoTemp(defaultSingle);
+                                            if (!stationMeteoRain || stationMeteoRain.includes('Temp:')) setStationMeteoRain(defaultSingle);
+                                            if (!stationMeteoWind || stationMeteoWind.includes('Temp:')) setStationMeteoWind(defaultSingle);
+                                        } else {
+                                            setSelectedStationIdTemp(selectedStationId);
+                                            setSelectedStationIdRain(selectedStationId);
+                                            setSelectedStationIdWind(selectedStationId);
+                                            setStationMeteo(defaultSingle);
+                                            setStationMeteoTemp(defaultSingle);
+                                            setStationMeteoRain(defaultSingle);
+                                            setStationMeteoWind(defaultSingle);
+                                        }
+                                    }} 
                                 />
+                                <label htmlFor="chk-show-detailed-stations" style={{ fontSize: '0.85rem', cursor: 'pointer', fontWeight: '600', color: '#1e293b' }}>
+                                    Différencier le poste de référence pour le vent (2 postes)
+                                </label>
                             </div>
+
+                            {!showDetailedStations ? (
+                                <div className="btp-form-group">
+                                    <label>Désignation station (Éditable)</label>
+                                    <input
+                                        type="text"
+                                        value={stationMeteo}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setStationMeteo(val);
+                                            setStationMeteoTemp(val);
+                                            setStationMeteoRain(val);
+                                            setStationMeteoWind(val);
+                                        }}
+                                        placeholder="Nom de la station tel qu'il apparaîtra"
+                                    />
+                                </div>
+                            ) : (
+                                <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '12px', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
+                                    
+                                    {/* Encadré d'aide et recommandation Chantonnay / Vendée */}
+                                    {((selectedDept === '85' || deptTemp === '85' || deptWind === '85') || (selectedStationId === '85051001')) && (
+                                        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px 12px', fontSize: '0.78rem', color: '#1e3a8a', lineHeight: 1.4 }}>
+                                            <div style={{ fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                💡 Configuration recommandée pour Chantonnay (85) :
+                                            </div>
+                                            <div style={{ fontSize: '0.76rem', color: '#334155', marginBottom: '6px' }}>
+                                                • <strong>Température & Pluie :</strong> CHANTONNAY (0.3 km)<br/>
+                                                • <strong>Vent avec anémomètre :</strong> <strong>POUZAUGES SA (20.9 km)</strong> ou <strong>LA ROCHE SUR YON (25.4 km)</strong>
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        setSelectedStationIdTemp('85051001');
+                                                        setSelectedStationIdRain('85051001');
+                                                        setStationMeteoTemp('CHANTONNAY');
+                                                        setStationMeteoRain('CHANTONNAY');
+                                                        setSelectedStationIdWind('85182004');
+                                                        setStationMeteoWind('POUZAUGES SA');
+                                                        setDeptTemp('85');
+                                                        setDeptRain('85');
+                                                        setDeptWind('85');
+                                                    }}
+                                                    style={{ background: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '4px', padding: '5px 10px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' }}
+                                                >
+                                                    ⚡ 1. Vent : Pouzauges SA (20.9 km - plus proche)
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        setSelectedStationIdTemp('85051001');
+                                                        setSelectedStationIdRain('85051001');
+                                                        setStationMeteoTemp('CHANTONNAY');
+                                                        setStationMeteoRain('CHANTONNAY');
+                                                        setSelectedStationIdWind('85191003');
+                                                        setStationMeteoWind('LA ROCHE SUR YON');
+                                                        setDeptTemp('85');
+                                                        setDeptRain('85');
+                                                        setDeptWind('85');
+                                                    }}
+                                                    style={{ background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '4px', padding: '5px 10px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' }}
+                                                >
+                                                    ⚡ 2. Vent : La Roche-sur-Yon (25.4 km - Synoptique)
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* POSTE 1 : TEMPÉRATURE & PRÉCIPITATIONS (PLUIE) */}
+                                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', boxSizing: 'border-box' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <label style={{ fontSize: '0.8rem', fontWeight: '700', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <Thermometer size={14} style={{ color: '#f59e0b' }} /> <CloudRain size={14} style={{ color: '#3b82f6' }} /> Température & Pluie
+                                            </label>
+                                            <select
+                                                style={{ fontSize: '0.75rem', padding: '2px 6px', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#ffffff', color: '#475569', maxWidth: '140px' }}
+                                                value={deptTemp || selectedDept}
+                                                onChange={async (e) => {
+                                                    const d = e.target.value;
+                                                    setDeptTemp(d);
+                                                    setDeptRain(d);
+                                                    const sts = await getStationsForDept(d);
+                                                    setStationsTemp(sts);
+                                                    setStationsRain(sts);
+                                                }}
+                                            >
+                                                {DEPARTMENTS.map(d => <option key={d.code} value={d.code}>{d.code} - {d.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <select
+                                            style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.8rem', background: '#ffffff', boxSizing: 'border-box' }}
+                                            value={selectedStationIdTemp || selectedStationId}
+                                            onChange={(e) => {
+                                                const sid = e.target.value;
+                                                setSelectedStationIdTemp(sid);
+                                                setSelectedStationIdRain(sid);
+                                                const name = stationNames[sid] || sid;
+                                                const cleanName = cleanStationName(name);
+                                                setStationMeteoTemp(cleanName);
+                                                setStationMeteoRain(cleanName);
+                                            }}
+                                        >
+                                            <option value="">-- Choisir le poste (Température & Pluie) --</option>
+                                            {stationsTemp.map(s => (
+                                                <option key={s.station_id} value={s.station_id}>
+                                                    {stationNames[s.station_id] || s.nom_station || s.station_id} ({s.station_id})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <input 
+                                            type="text"
+                                            style={{ width: '100%', padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.78rem', color: '#475569', background: '#f8fafc', boxSizing: 'border-box' }}
+                                            value={stationMeteoTemp} 
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setStationMeteoTemp(val);
+                                                setStationMeteoRain(val);
+                                            }} 
+                                            placeholder="Nom du poste affiché (ex: CHANTONNAY)..." 
+                                        />
+                                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
+                                            * Utilisé pour la température mini/maxi et le cumul de pluie.
+                                        </div>
+                                    </div>
+
+                                    {/* POSTE 2 : VENT & RAFALES */}
+                                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', boxSizing: 'border-box' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <label style={{ fontSize: '0.8rem', fontWeight: '700', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <Wind size={14} style={{ color: '#0d9488' }} /> Vent & Rafales
+                                            </label>
+                                            <select
+                                                style={{ fontSize: '0.75rem', padding: '2px 6px', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#ffffff', color: '#475569', maxWidth: '140px' }}
+                                                value={deptWind || selectedDept}
+                                                onChange={async (e) => {
+                                                    const d = e.target.value;
+                                                    setDeptWind(d);
+                                                    const sts = await getStationsForDept(d);
+                                                    setStationsWind(sts);
+                                                }}
+                                            >
+                                                {DEPARTMENTS.map(d => <option key={d.code} value={d.code}>{d.code} - {d.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <select
+                                            style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.8rem', background: '#ffffff', boxSizing: 'border-box' }}
+                                            value={selectedStationIdWind || selectedStationId}
+                                            onChange={(e) => {
+                                                const sid = e.target.value;
+                                                setSelectedStationIdWind(sid);
+                                                const name = stationNames[sid] || sid;
+                                                const cleanName = cleanStationName(name);
+                                                setStationMeteoWind(cleanName);
+                                            }}
+                                        >
+                                            <option value="">-- Choisir le poste (Vent & Rafales) --</option>
+                                            {stationsWind.map(s => (
+                                                <option key={s.station_id} value={s.station_id}>
+                                                    {stationNames[s.station_id] || s.nom_station || s.station_id} ({s.station_id})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <input 
+                                            type="text"
+                                            style={{ width: '100%', padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.78rem', color: '#475569', background: '#f8fafc', boxSizing: 'border-box' }}
+                                            value={stationMeteoWind} 
+                                            onChange={(e) => setStationMeteoWind(e.target.value)} 
+                                            placeholder="Nom du poste vent affiché (ex: POUZAUGES SA)..." 
+                                        />
+                                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
+                                            * Sélectionner une station équipée d'un anémomètre (ex: Pouzauges SA, La Roche-sur-Yon).
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             <button className="btp-btn btp-btn-primary mt-10" onClick={handleFetchData}>
                                 <Download size={18} /> Charger (Météo-France)
@@ -1381,6 +2138,14 @@ const AttestationIntemperieManager = () => {
                         <button className="btp-btn btp-btn-print" onClick={handlePrint} disabled={!globalData}>
                             <Printer size={18} /> Tout Imprimer (Pack Complet)
                         </button>
+                        <button 
+                            className="btp-btn" 
+                            style={{ background: '#0284c7', color: '#ffffff', border: 'none', padding: '10px 14px', borderRadius: '6px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: globalData ? 'pointer' : 'not-allowed', opacity: globalData ? 1 : 0.6 }} 
+                            onClick={handleExportPDF} 
+                            disabled={!globalData}
+                        >
+                            <Download size={18} /> Télécharger en PDF (.pdf)
+                        </button>
                         <button className="btp-btn btp-btn-save" onClick={handleSaveToDB} disabled={!globalData}>
                             <Save size={18} /> Enregistrer en Base
                         </button>
@@ -1399,11 +2164,27 @@ const AttestationIntemperieManager = () => {
                             <p style={{ opacity: 0.8 }}>Configurez les dates et chargez les données <br />pour visualiser l'attestation complète.</p>
                         </div>
                     ) : (
-                        <div
-                            className="btp-full-report-preview"
-                            style={{ width: '100%' }}
-                            dangerouslySetInnerHTML={{ __html: reportOutput }}
-                        />
+                        <>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginBottom: '15px', position: 'sticky', top: '10px', zIndex: 100 }} className="no-print">
+                                <button
+                                    onClick={handlePrint}
+                                    style={{ background: '#16a34a', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}
+                                >
+                                    <Printer size={16} /> Imprimer l'attestation
+                                </button>
+                                <button
+                                    onClick={handleExportPDF}
+                                    style={{ background: '#0284c7', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}
+                                >
+                                    <Download size={16} /> Télécharger PDF
+                                </button>
+                            </div>
+                            <div
+                                className="btp-full-report-preview"
+                                style={{ width: '100%' }}
+                                dangerouslySetInnerHTML={{ __html: reportOutput }}
+                            />
+                        </>
                     )}
                 </div>
             </div>
@@ -1459,6 +2240,79 @@ const AttestationIntemperieManager = () => {
                                     </tbody>
                                 </table>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MERGE OPTIONS MODAL */}
+            {showMergeModal && (
+                <div className="btp-modal open">
+                    <div className="btp-modal-content" style={{ maxWidth: '500px' }}>
+                        <div className="btp-modal-header">
+                            <h2 className="text-xl font-bold flex items-center gap-2"><FileText /> Option d'Importation CSV</h2>
+                            <button onClick={() => setShowMergeModal(false)} className="text-slate-400 hover:text-slate-600">×</button>
+                        </div>
+                        <div className="p-20">
+                            <p className="text-xs text-slate-500 mb-10">
+                                Fichier station : <strong>{csvStationId}</strong><br/>
+                                Période du fichier : {csvDates.firstDate?.toLocaleDateString()} au {csvDates.lastDate?.toLocaleDateString()}
+                            </p>
+
+                            <div className="mb-15">
+                                <label className="block text-xs font-bold text-slate-700 mb-5">Nom du poste de référence :</label>
+                                <input 
+                                    type="text" 
+                                    className="w-full border border-slate-300 rounded p-8 text-sm focus:outline-none focus:border-blue-500" 
+                                    value={csvStationName} 
+                                    onChange={e => setCsvStationName(e.target.value)} 
+                                    placeholder="Ex: Lille, Douai..." 
+                                />
+                                <span className="text-xxs text-slate-400 block mt-2">Ce nom sera appliqué aux paramètres cochés ci-dessous lors de l'intégration.</span>
+                            </div>
+
+                            <div className="mb-20">
+                                <label className="block text-sm font-bold text-slate-700 mb-10">Paramètres à importer :</label>
+                                <div className="flex flex-col gap-3 bg-slate-50 p-10 rounded border border-slate-200">
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input type="checkbox" checked={mergeOptionTemp} onChange={e => setMergeOptionTemp(e.target.checked)} />
+                                        Températures (Min / Max)
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input type="checkbox" checked={mergeOptionRain} onChange={e => setMergeOptionRain(e.target.checked)} />
+                                        Pluie (Cumul)
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input type="checkbox" checked={mergeOptionWind} onChange={e => setMergeOptionWind(e.target.checked)} />
+                                        Vent & Rafales
+                                    </label>
+                                </div>
+                            </div>
+
+                            {globalData && Object.keys(globalData).length > 0 && (
+                                <div className="mb-20">
+                                    <label className="block text-sm font-bold text-slate-700 mb-10">Mode d'intégration :</label>
+                                    <div className="flex gap-15">
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input type="radio" name="attestationMergeMode" checked={mergeMode === 'merge'} onChange={() => setMergeMode('merge')} />
+                                            Fusionner avec les données existantes
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input type="radio" name="attestationMergeMode" checked={mergeMode === 'overwrite'} onChange={() => setMergeMode('overwrite')} />
+                                            Écraser (Remplacer tout)
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-10 mt-20">
+                                <button className="bg-slate-200 text-slate-700 px-15 py-8 rounded font-semibold hover:bg-slate-300 transition-all text-sm" onClick={() => setShowMergeModal(false)}>
+                                    Annuler
+                                </button>
+                                <button className="bg-emerald-600 text-white px-15 py-8 rounded font-semibold hover:bg-emerald-700 transition-all text-sm flex items-center gap-5" onClick={handleConfirmMerge}>
+                                    <Save size={16} /> Importer
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -9,6 +9,26 @@ const BASE_CLIM_URL = typeof window !== 'undefined' ? '/api-meteo-clim' : 'https
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+const splitDateRange = (startDate, endDate, maxDays = 360) => {
+    const ranges = [];
+    let cur = new Date(startDate);
+    const end = new Date(endDate);
+    while (cur <= end) {
+        let chunkEnd = new Date(cur);
+        chunkEnd.setDate(chunkEnd.getDate() + (maxDays - 1));
+        if (chunkEnd > end) {
+            chunkEnd = new Date(end);
+        }
+        ranges.push({
+            start: cur.toISOString().split('T')[0],
+            end: chunkEnd.toISOString().split('T')[0]
+        });
+        cur = new Date(chunkEnd);
+        cur.setDate(cur.getDate() + 1);
+    }
+    return ranges;
+};
+
 export const meteoFranceClimService = {
     /**
      * Commander et télécharger l'historique quotidien pour PLUSIEURS stations en une seule commande (ou par lots)
@@ -110,6 +130,7 @@ export const meteoFranceClimService = {
 
     /**
      * Commander et télécharger l'historique quotidien d'une station (1950 à hier)
+     * Découpe automatiquement en tranches <= 1 an pour respecter le plafond Météo-France
      * @param {string} stationId Identifiant poste Météo-France (8 chiffres, ex: "59178001")
      * @param {string} startDate Date début YYYY-MM-DD
      * @param {string} endDate Date fin YYYY-MM-DD
@@ -129,11 +150,32 @@ export const meteoFranceClimService = {
             return [];
         }
 
+        const ranges = splitDateRange(startDate, safeEnd, 360);
+        if (ranges.length === 0) return [];
+
+        if (ranges.length === 1) {
+            return this._fetchSingleStationHistory(stationId, ranges[0].start, ranges[0].end, onProgress);
+        }
+
+        onProgress(`Découpage en ${ranges.length} tranches annuelles DPClim...`);
+        const chunks = await Promise.all(
+            ranges.map(async (r, idx) => {
+                onProgress(`Commande DPClim (${idx + 1}/${ranges.length}) : ${r.start} à ${r.end}…`);
+                return this._fetchSingleStationHistory(stationId, r.start, r.end, onProgress);
+            })
+        );
+
+        const map = new Map();
+        chunks.flat().forEach(d => map.set(d.date, d));
+        return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+    },
+
+    async _fetchSingleStationHistory(stationId, startDate, endDate, onProgress = () => {}) {
         let token = await meteoAuth.getValidToken();
         const deb = startDate + 'T00:00:00Z';
-        const fin = safeEnd + 'T23:59:59Z';
+        const fin = endDate + 'T23:59:59Z';
 
-        onProgress('Envoi de la commande à Météo-France…');
+        onProgress(`Envoi commande DPClim (${startDate} → ${endDate})…`);
 
         // 1. Commande de la station
         const cmdUrl = `${BASE_CLIM_URL}/commande-station/quotidienne?id-station=${stationId}&date-deb-periode=${encodeURIComponent(deb)}&date-fin-periode=${encodeURIComponent(fin)}`;
@@ -169,7 +211,7 @@ export const meteoFranceClimService = {
             throw new Error('Aucun numéro de commande retourné par Météo-France');
         }
 
-        onProgress('Préparation du relevé par Météo-France (2 à 5s)…');
+        onProgress(`Préparation du relevé par Météo-France (2 à 5s)…`);
 
         // 2. Récupération du fichier (polling toutes les 2.5s)
         await sleep(2500);
@@ -277,10 +319,10 @@ export const meteoFranceClimService = {
             const tm = parseVal(idxTM) ?? parseVal(idxTNTXM) ?? (tn !== null && tx !== null ? parseFloat(((tn + tx) / 2).toFixed(1)) : null);
             const rr = parseVal(idxRR) ?? 0;
             
-            // Rafale normalisée OMM (3 secondes) en priorité
+            // Rafale maximale de pointe (maximum réel entre FXI instantané et FXI3S normalisé)
             const fxi3sMS = parseVal(idxFXI3S);
             const fxiMS = parseVal(idxFXI);
-            const activeFxiMS = fxi3sMS !== null ? fxi3sMS : fxiMS;
+            const activeFxiMS = (fxiMS !== null && fxi3sMS !== null) ? Math.max(fxiMS, fxi3sMS) : (fxiMS !== null ? fxiMS : fxi3sMS);
             const fxiKmh = activeFxiMS !== null ? Math.round(activeFxiMS * 3.6) : null;
             const hxi = parseHour(idxHXI3S) || parseHour(idxHXI);
             const dxi = parseVal(idxDXI3S) ?? parseVal(idxDXI);
@@ -316,6 +358,7 @@ export const meteoFranceClimService = {
 
     /**
      * Commander et télécharger l'historique HORAIRE officiel d'une station Météo-France (DPClim)
+     * Découpe automatiquement en tranches <= 1 an pour respecter le plafond Météo-France
      * @param {string} stationId Identifiant poste Météo-France (8 chiffres)
      * @param {string} startDate Date début YYYY-MM-DD
      * @param {string} endDate Date fin YYYY-MM-DD
@@ -331,11 +374,35 @@ export const meteoFranceClimService = {
         if (safeEnd > yesterday) safeEnd = yesterday;
         if (startDate > yesterday) return [];
 
+        const ranges = splitDateRange(startDate, safeEnd, 360);
+        if (ranges.length === 0) return [];
+
+        if (ranges.length === 1) {
+            return this._fetchSingleStationHourlyHistory(stationId, ranges[0].start, ranges[0].end, onProgress);
+        }
+
+        onProgress(`Découpage horaire en ${ranges.length} tranches annuelles DPClim...`);
+        const chunks = await Promise.all(
+            ranges.map(async (r, idx) => {
+                onProgress(`Commande horaire DPClim (${idx + 1}/${ranges.length}) : ${r.start} à ${r.end}…`);
+                return this._fetchSingleStationHourlyHistory(stationId, r.start, r.end, onProgress);
+            })
+        );
+
+        const map = new Map();
+        chunks.flat().forEach(d => {
+            const t = d.time instanceof Date ? d.time.getTime() : new Date(d.time).getTime();
+            map.set(t, d);
+        });
+        return Array.from(map.values()).sort((a, b) => a.time - b.time);
+    },
+
+    async _fetchSingleStationHourlyHistory(stationId, startDate, endDate, onProgress = () => {}) {
         let token = await meteoAuth.getValidToken();
         const deb = startDate + 'T00:00:00Z';
-        const fin = safeEnd + 'T23:59:59Z';
+        const fin = endDate + 'T23:59:59Z';
 
-        onProgress('Commande horaire DPClim Météo-France…');
+        onProgress(`Commande horaire DPClim (${startDate} → ${endDate})…`);
 
         const cmdUrl = `${BASE_CLIM_URL}/commande-station/horaire?id-station=${stationId}&date-deb-periode=${encodeURIComponent(deb)}&date-fin-periode=${encodeURIComponent(fin)}`;
         
@@ -366,7 +433,7 @@ export const meteoFranceClimService = {
 
         if (!idCmde) throw new Error('Aucun numéro de commande horaire retourné par Météo-France');
 
-        onProgress('Préparation du relevé horaire par Météo-France…');
+        onProgress(`Génération horaire DPClim (${idCmde})…`);
         await sleep(2500);
         const fileUrl = `${BASE_CLIM_URL}/commande/fichier?id-cmde=${idCmde}`;
         let csvText = null;
@@ -463,9 +530,10 @@ export const meteoFranceClimService = {
             const ffMS = parseVal(cols, idxFF);
             const ffKmh = ffMS !== null ? Math.round(ffMS * 3.6) : null;
             
+            // Rafale maximale de pointe (maximum réel entre FXI instantané et FXI3S normalisé)
             const fxi3sMS = parseVal(cols, idxFXI3S);
             const fxiMS = parseVal(cols, idxFXI);
-            const activeFxiMS = fxi3sMS !== null ? fxi3sMS : fxiMS;
+            const activeFxiMS = (fxiMS !== null && fxi3sMS !== null) ? Math.max(fxiMS, fxi3sMS) : (fxiMS !== null ? fxiMS : fxi3sMS);
             const fxiKmh = activeFxiMS !== null ? Math.round(activeFxiMS * 3.6) : (ffKmh !== null ? Math.round(ffKmh * 1.3) : null);
 
             const u = parseVal(cols, idxU);

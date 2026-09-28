@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { Waves, RefreshCw, Anchor, Compass, Info, ShieldAlert } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import './SeaTemperatureMap.css';
+import { CARTO_TILES } from '../../constants/carto';
 
 // Supabase base URL
 const SUPA_URL = 'https://ubdevaemtwbzxksjlhjg.supabase.co/storage/v1/object/public/vigilance-captures';
@@ -192,7 +193,7 @@ export default function SeaTemperatureMap() {
                         >
                             {/* Base map — light, no labels */}
                             <TileLayer
-                                url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+                                url={CARTO_TILES.LIGHT_NOLABELS}
                                 attribution='&copy; CartoDB'
                                 zIndex={100}
                             />
@@ -212,7 +213,7 @@ export default function SeaTemperatureMap() {
 
                             {/* Labels on top */}
                             <TileLayer
-                                url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+                                url={CARTO_TILES.LIGHT_ONLY_LABELS}
                                 zIndex={500}
                                 opacity={0.9}
                             />

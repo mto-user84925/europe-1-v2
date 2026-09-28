@@ -12,6 +12,7 @@ import {
 } from '../../services/vigicruuesService';
 import 'leaflet/dist/leaflet.css';
 import './CruesDashboard.css';
+import { CARTO_TILES } from '../../constants/carto';
 
 const VIGI_COLORS = {
     1: '#006400', // Vert Foncé
@@ -303,7 +304,7 @@ const CruesDashboard = () => {
                                         {/* Fond Gris sans étiquettes */}
                                         <TileLayer
                                             attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                                            url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+                                            url={CARTO_TILES.LIGHT_NOLABELS}
                                         />
                                         {/* Contours Départements (uniquement en mode light) */}
                                         {/* Department borders removed as per user request */}

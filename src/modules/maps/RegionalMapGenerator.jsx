@@ -7,6 +7,7 @@ import html2canvas from 'html2canvas';
 import { Download, RefreshCw, Calendar, Map as MapIcon, Layers } from 'lucide-react';
 import stationNamesData from '../../data/stationNames.json';
 import './RegionalMapGenerator.css';
+import { CARTO_TILES } from '../../constants/carto';
 
 // --- Configuration ---
 const supabase = createClient(
@@ -452,7 +453,7 @@ const RegionalMapGenerator = () => {
                         attributionControl={false}
                         style={{ height: '100%', width: '100%' }}
                     >
-                        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+                        <TileLayer url={CARTO_TILES.LIGHT_ALL} />
                         <MapUpdater center={regionConfig.center} zoom={regionConfig.zoom} bounds={bounds} />
 
                         {selectedParam === 'foudre' ? (

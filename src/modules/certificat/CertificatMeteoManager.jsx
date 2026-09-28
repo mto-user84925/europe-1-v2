@@ -237,15 +237,40 @@ const CertificatMeteoManager = () => {
             const cityLat = cityResults[0].lat;
             const cityLon = cityResults[0].lon;
 
-            // Calcul distances via RPC Supabase (toutes stations confondues)
-            // On demande plus de stations (30) pour pouvoir filtrer celles qui ne mesurent pas le paramètre requis
-            const { data: dists, error } = await supabase.rpc('find_nearest_stations', {
-                lat_input: cityLat,
-                lon_input: cityLon,
-                limit_count: 30
-            });
+            // Calcul distances : Essai RPC Supabase puis Fallback 100% autonome local
+            let dists = null;
+            if (supabase) {
+                try {
+                    const { data, error } = await supabase.rpc('find_nearest_stations', {
+                        lat_input: cityLat,
+                        lon_input: cityLon,
+                        limit_count: 30
+                    });
+                    if (!error && data && data.length > 0) dists = data;
+                } catch (e) { }
+            }
 
-            if (error) { console.error("RPC Error", error); return; }
+            if (!dists || dists.length === 0) {
+                try {
+                    const stationsData = await import('../../data/stations_list.json');
+                    const list = stationsData.default?.features || stationsData.features || [];
+                    const R = 6371;
+                    dists = list.map(f => {
+                        const [lonS, latS] = f.geometry.coordinates;
+                        const dLat = (latS - cityLat) * Math.PI / 180;
+                        const dLon = (lonS - cityLon) * Math.PI / 180;
+                        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                            Math.cos(cityLat * Math.PI / 180) * Math.cos(latS * Math.PI / 180) *
+                            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                        const dKm = Math.round(R * c * 10) / 10;
+                        return { id: f.properties.num, name: f.properties.nom, dist_km: dKm };
+                    }).sort((a, b) => a.dist_km - b.dist_km).slice(0, 30);
+                } catch (e) {
+                    console.error("Erreur calcul stations proches local:", e);
+                }
+            }
+
             if (!dists || dists.length === 0) return;
 
             console.log(`[Certificat] ${dists.length} stations candidates trouvées.`);
@@ -865,11 +890,11 @@ const CertificatMeteoManager = () => {
 
             // STRATÉGIE 2 : Pour toute période passée (ex: Janvier 2026, 1950 à hier), appel direct global ultra-rapide
             if (history.length === 0) {
-                history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, startDate, finalEndDate);
+                history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, startDate, finalEndDate, (msg) => setStatus('⏳ ' + msg));
             }
 
             if (!history || history.length === 0) {
-                setStatus('❌ Aucune donnée trouvée (Supabase/API/DPClim) pour cette date et cette station.');
+                setStatus('❌ Aucune donnée DPClim trouvée pour cette date et cette station.');
                 return;
             }
 

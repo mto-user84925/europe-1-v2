@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Upload, Trash2, Zap, AlertTriangle } from 'lucide-react';
+import { CARTO_TILES } from '../../constants/carto';
 
 // Dynamically load proj4js for Lambert 93 projection
 const loadProj4 = () => {
@@ -204,7 +205,7 @@ const FoudreImportMap = () => {
                     >
                         <TileLayer
                             attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                            url={CARTO_TILES.DARK_ALL}
                         />
                         <MapController center={mapCenter} zoom={mapZoom} />
 

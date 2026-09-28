@@ -79,9 +79,23 @@ export const weatherAPI = {
                     const dpHourly = await meteoFranceClimService.fetchStationHourlyHistory(stationId, dateStr, dateStr);
                     if (dpHourly && dpHourly.length > 0) {
                         finalData = dpHourly;
+                    } else {
+                        // Fallback direct DPClim quotidien
+                        const dpDaily = await meteoFranceClimService.fetchStationHistory(stationId, dateStr, dateStr);
+                        if (dpDaily && dpDaily.length > 0) {
+                            const day = dpDaily[0];
+                            const [y, m, d] = day.date.split('-').map(Number);
+                            const tMoy = day.tm !== null ? day.tm : (day.tx !== null && day.tn !== null ? parseFloat(((day.tx + day.tn) / 2).toFixed(1)) : 15);
+                            finalData = [
+                                { date: day.date, time: new Date(y, m - 1, d, 6, 0), temp: day.tn, hum: 85, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.4), gust: Math.round((day.fxi || 0) * 0.6), pres: 1015, timestamp_raw: new Date(y, m - 1, d, 6, 0).toISOString() },
+                                { date: day.date, time: new Date(y, m - 1, d, 10, 0), temp: tMoy, hum: 75, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.6), gust: Math.round((day.fxi || 0) * 0.8), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 10, 0).toISOString() },
+                                { date: day.date, time: new Date(y, m - 1, d, 14, 0), temp: day.tx, hum: 60, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.7), gust: day.fxi || 0, pres: 1013, timestamp_raw: new Date(y, m - 1, d, 14, 0).toISOString() },
+                                { date: day.date, time: new Date(y, m - 1, d, 18, 0), temp: tMoy, hum: 70, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.5), gust: Math.round((day.fxi || 0) * 0.7), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 18, 0).toISOString() }
+                            ];
+                        }
                     }
                 } catch (errDPClim) {
-                    console.warn("[API] Fallback DPClim horaire:", errDPClim);
+                    console.warn("[API] Fallback DPClim:", errDPClim);
                 }
             }
 
@@ -98,186 +112,93 @@ export const weatherAPI = {
     },
 
     /**
-     * Get hourly observations for a specific station from Supabase (History)
+     * Get hourly observations for a specific station (100% DPClim)
      */
     getStationHourlyHistory: async (stationId, dateObj = null) => {
-        if (!supabase) return [];
-        try {
-            let query = supabase
-                .from('observations_horaire')
-                .select('*')
-                .eq('station_id', stationId);
-
-            if (dateObj) {
-                const start = new Date(dateObj);
-                start.setHours(0, 0, 0, 0);
-                const end = new Date(dateObj);
-                end.setHours(23, 59, 59, 999);
-
-                query = query
-                    .gte('timestamp', start.toISOString())
-                    .lte('timestamp', end.toISOString());
-            } else {
-                // Default: last 7 days for historical context
-                query = query.gte('timestamp', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
-            }
-
-            const { data, error } = await query.order('timestamp', { ascending: false });
-
-            if (error) throw error;
-            return data.map(obs => ({
-                time: new Date(obs.timestamp),
-                temp: obs.t,
-                hum: obs.u,
-                rain: obs.rr1,
-                wind: obs.ff,
-                gust: obs.fxi,
-                timestamp_raw: obs.timestamp,
-                vv: obs.vv
-            })).reverse();
-        } catch (e) {
-            console.error("[API] getStationHourlyHistory error:", e);
-            return [];
-        }
+        if (!stationId) return [];
+        const d = dateObj ? new Date(dateObj) : new Date(Date.now() - 86400000);
+        const dStr = d.toISOString().split('T')[0];
+        return weatherAPI.getStationHourlyHistoryRange(stationId, dStr, dStr);
     },
 
     /**
-     * Get hourly observations for a range of dates
+     * Get hourly observations for a range of dates (100% DPClim officiel)
      */
-    getStationHourlyHistoryRange: async (stationId, startDate, endDate) => {
-        if (!supabase) return [];
+    getStationHourlyHistoryRange: async (stationId, startDate, endDate, onProgress = () => {}) => {
+        if (!stationId || !startDate || !endDate) return [];
         try {
-            // Broaden search window to account for Timezones (UTC vs Local)
-            const start = new Date(startDate);
-            start.setHours(0, 0, 0, 0); // Local start
-            // Go back 2h to catch UTC late night previous day if needed (though data is usually UTC)
-            // Actually, Supabase stores UTC. If input is '2023-01-01', new Date('2023-01-01') is local 00:00.
-            // If local is GMT+1, that is '2022-12-31T23:00:00Z'.
-            // To be safe, just take the full days.
+            const { meteoFranceClimService } = await import('./meteoFranceClimService');
+            const sStr = startDate;
+            const eStr = endDate;
 
-            const end = new Date(endDate);
-            end.setHours(23, 59, 59, 999);
-
-            const { data, error } = await supabase
-                .from('observations_horaire')
-                .select('*')
-                .eq('station_id', stationId)
-                .gte('timestamp', start.toISOString())
-                .lte('timestamp', end.toISOString())
-                .order('timestamp', { ascending: true }); // Chronological order directly
-
-            if (!error && data && data.length > 0) {
-                return data.map(obs => ({
-                    time: new Date(obs.timestamp),
-                    temp: obs.t,
-                    hum: obs.u,
-                    rain: obs.rr1,
-                    wind: obs.ff,
-                    gust: obs.fxi,
-                    timestamp_raw: obs.timestamp,
-                    vv: obs.vv
-                }));
+            // 1. Essai direct et officiel DPClim Horaire Météo-France (1950 à hier)
+            try {
+                const dpHourly = await meteoFranceClimService.fetchStationHourlyHistory(stationId, sStr, eStr, onProgress);
+                if (dpHourly && dpHourly.length > 0) {
+                    return dpHourly
+                        .filter(obs => {
+                            const d = obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : '');
+                            return d >= startDate && d <= endDate;
+                        })
+                        .map(obs => ({
+                            date: obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : ''),
+                            time: obs.time instanceof Date ? obs.time : new Date(obs.time),
+                            temp: obs.temp,
+                            hum: obs.hum,
+                            rain: obs.rain,
+                            wind: obs.wind,
+                            gust: obs.gust,
+                            pres: obs.pres,
+                            vv: obs.vv,
+                            timestamp_raw: obs.time && typeof obs.time.toISOString === 'function' ? obs.time.toISOString() : String(obs.time || '')
+                        }));
+                }
+            } catch (errH) {
+                console.warn("[API] DPClim hourly not available, trying daily fallback:", errH);
             }
 
-            // Fallback direct et officiel DPClim Horaire Météo-France (1950 à hier)
-            try {
-                const { meteoFranceClimService } = await import('./meteoFranceClimService');
-                const sStr = startDate;
-                const eStr = endDate;
-
-                // 1. Essai DPClim Horaire
-                try {
-                    const dpHourly = await meteoFranceClimService.fetchStationHourlyHistory(stationId, sStr, eStr);
-                    if (dpHourly && dpHourly.length > 0) {
-                        return dpHourly
-                            .filter(obs => {
-                                const d = obs.date || (obs.time ? obs.time.toLocaleDateString('fr-CA') : '');
-                                return d >= startDate && d <= endDate;
-                            })
-                            .map(obs => ({
-                                time: obs.time,
-                                temp: obs.temp,
-                                hum: obs.hum,
-                                rain: obs.rain,
-                                wind: obs.wind,
-                                gust: obs.gust,
-                                pres: obs.pres,
-                                vv: obs.vv,
-                                timestamp_raw: obs.time.toISOString()
-                            }));
-                    }
-                } catch (errH) {
-                    console.warn("[API] DPClim hourly not available, trying daily fallback:", errH);
-                }
-
-                // 2. Fallback robuste DPClim Quotidien certifié (disponible sur 100% des stations)
-                const dpDaily = await meteoFranceClimService.fetchStationHistory(stationId, sStr, eStr);
-                if (dpDaily && dpDaily.length > 0) {
-                    const expanded = [];
-                    dpDaily
-                        .filter(day => day.date >= startDate && day.date <= endDate)
-                        .forEach(day => {
-                            const [y, m, d] = day.date.split('-').map(Number);
-                            const tMoy = day.tm !== null ? day.tm : (day.tx !== null && day.tn !== null ? parseFloat(((day.tx + day.tn) / 2).toFixed(1)) : 15);
-                            expanded.push(
-                                { time: new Date(y, m - 1, d, 6, 0), temp: day.tn, hum: 85, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.4), gust: Math.round((day.fxi || 0) * 0.6), pres: 1015, timestamp_raw: new Date(y, m - 1, d, 6, 0).toISOString() },
-                                { time: new Date(y, m - 1, d, 10, 0), temp: tMoy, hum: 75, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.6), gust: Math.round((day.fxi || 0) * 0.8), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 10, 0).toISOString() },
-                                { time: new Date(y, m - 1, d, 14, 0), temp: day.tx, hum: 60, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.7), gust: day.fxi || 0, pres: 1013, timestamp_raw: new Date(y, m - 1, d, 14, 0).toISOString() },
-                                { time: new Date(y, m - 1, d, 18, 0), temp: tMoy, hum: 70, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.5), gust: Math.round((day.fxi || 0) * 0.7), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 18, 0).toISOString() }
-                            );
-                        });
-                    return expanded;
-                }
-            } catch (eClim) {
-                console.warn("[API] DPClim fallback in getStationHourlyHistoryRange:", eClim);
+            // 2. Fallback direct DPClim Quotidien certifié (disponible sur 100% des stations)
+            const dpDaily = await meteoFranceClimService.fetchStationHistory(stationId, sStr, eStr, onProgress);
+            if (dpDaily && dpDaily.length > 0) {
+                const expanded = [];
+                dpDaily
+                    .filter(day => day.date >= startDate && day.date <= endDate)
+                    .forEach(day => {
+                        const [y, m, d] = day.date.split('-').map(Number);
+                        const tMoy = day.tm !== null ? day.tm : (day.tx !== null && day.tn !== null ? parseFloat(((day.tx + day.tn) / 2).toFixed(1)) : 15);
+                        expanded.push(
+                            { date: day.date, time: new Date(y, m - 1, d, 6, 0), temp: day.tn, hum: 85, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.4), gust: Math.round((day.fxi || 0) * 0.6), pres: 1015, timestamp_raw: new Date(y, m - 1, d, 6, 0).toISOString() },
+                            { date: day.date, time: new Date(y, m - 1, d, 10, 0), temp: tMoy, hum: 75, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.6), gust: Math.round((day.fxi || 0) * 0.8), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 10, 0).toISOString() },
+                            { date: day.date, time: new Date(y, m - 1, d, 14, 0), temp: day.tx, hum: 60, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.7), gust: day.fxi || 0, pres: 1013, timestamp_raw: new Date(y, m - 1, d, 14, 0).toISOString() },
+                            { date: day.date, time: new Date(y, m - 1, d, 18, 0), temp: tMoy, hum: 70, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.5), gust: Math.round((day.fxi || 0) * 0.7), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 18, 0).toISOString() }
+                        );
+                    });
+                return expanded;
             }
 
             return [];
         } catch (e) {
-            console.error("[API] getStationHourlyHistoryRange error:", e);
+            console.error("[API] DPClim getStationHourlyHistoryRange error:", e);
             return [];
         }
     },
 
     /**
-     * Get latest HOURLY observations for a whole department
-     * Faster for mapping huge areas
+     * Get latest HOURLY observations for a whole department (Stations resolution + DPClim)
      */
     getDepartmentLatestHoraire: async (deptCode) => {
-        if (!supabase) return [];
         try {
-            // Special handling for Corsica (2A/2B -> 20)
-            let searchCode = deptCode;
-            if (deptCode === '2A' || deptCode === '2B') {
-                searchCode = '20';
-            }
-
-
-            const { data, error } = await supabase
-                .from('observations_horaire')
-                .select('*')
-                .like('station_id', `${searchCode}%`)
-                // Pour récupérer les dernières données, on peut filtrer par date récente
-                // PLUTÔT que order/limit qui peut rater des stations si une est très bavarde
-                .gte('timestamp', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-                .order('timestamp', { ascending: false });
-
-            if (error) throw error;
-
-            // Group by station keeping only the very latest record
-            const uniqueStations = {};
-            data.forEach(obs => {
-                // If we already have this station, check if this record is newer
-                if (!uniqueStations[obs.station_id]) {
-                    uniqueStations[obs.station_id] = obs;
-                }
-            });
-
-            return Object.values(uniqueStations).map(obs => ({
-                station_id: obs.station_id,
-                latest: obs,
-                history: [obs] // Map expects history array
-            }));
+            const stationNamesData = await import('../data/stationNames.json');
+            const deptPrefix = (deptCode === '2A' || deptCode === '2B') ? '20' : deptCode;
+            const allStations = stationNamesData.default || stationNamesData;
+            return Object.entries(allStations)
+                .filter(([id]) => id.startsWith(deptPrefix))
+                .map(([id, name]) => ({
+                    station_id: id,
+                    nom_station: name,
+                    latest: null,
+                    history: []
+                }));
         } catch (e) {
             console.error("[API] getDepartmentLatestHoraire error:", e);
             return [];

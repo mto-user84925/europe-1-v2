@@ -1302,8 +1302,68 @@ canvas {
     color: #003366;
 }
 
-/* Masquer la dernière page si vide (sécurité) */
+/* Configuration complète pour l'impression @media print */
 @media print {
+    .no-print,
+    .btp-panel,
+    .btp-sidebar-scroll,
+    header,
+    nav,
+    .navbar,
+    button {
+        display: none !important;
+    }
+
+    body, html, .btp-manager-body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
+
+    .btp-layout {
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: auto !important;
+        width: 100% !important;
+    }
+
+    .btp-preview-container {
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        height: auto !important;
+        overflow: visible !important;
+        box-shadow: none !important;
+    }
+
+    .btp-full-report-preview {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .cert-page {
+        width: 210mm !important;
+        min-height: 297mm !important;
+        margin: 0 !important;
+        padding: 8mm 12mm !important;
+        box-shadow: none !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+    }
+
+    .cert-page:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
+    }
+
     .cert-page:empty {
         display: none !important;
     }

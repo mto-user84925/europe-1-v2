@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import 'leaflet/dist/leaflet.css';
 import './RadarFrance.css';
 import { MAIN_CITIES } from "../../data/mainCities";
+import { CARTO_TILES } from '../../constants/carto';
 
 const supabase = createClient(
     import.meta.env.VITE_SUPABASE_URL,
@@ -41,7 +42,7 @@ const RADAR_SCHEMES = [
 ];
 
 const MAP_STYLES = {
-    DARK:      { name: 'Nuit Expert (Recommandé)', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' },
+    DARK:      { name: 'Nuit Expert (Recommandé)', url: CARTO_TILES.DARK_ALL },
     RELIEF:    { name: 'Relief / Terrain',           url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}' },
     SATELLITE: { name: 'Photo satellite',             url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
     STANDARD:  { name: 'Villes & Frontières',       url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' }

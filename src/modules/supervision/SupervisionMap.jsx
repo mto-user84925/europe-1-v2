@@ -9,6 +9,7 @@ import 'leaflet/dist/leaflet.css';
 import { fetchDepartementsGeoJSON } from '../../services/vigicruuesService';
 import { MAIN_CITIES } from "../../data/mainCities";
 import { LIGHTNING_DESIGNS } from '../foudre/LightningStyles';
+import { CARTO_TILES } from '../../constants/carto';
 import './SupervisionMap.css';
 
 const HOUR_COLORS = [
@@ -26,8 +27,8 @@ const RADAR_SCHEMES = [
 ];
 
 const MAP_STYLES = {
-    DARK: { name: 'Mode Carbone', url: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", labels: "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png" },
-    LIGHT: { name: 'Mode Clair', url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", labels: "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png" }
+    DARK: { name: 'Mode Carbone', url: CARTO_TILES.DARK_NOLABELS, labels: CARTO_TILES.DARK_ONLY_LABELS },
+    LIGHT: { name: 'Mode Clair', url: CARTO_TILES.LIGHT_NOLABELS, labels: CARTO_TILES.LIGHT_ONLY_LABELS }
 };
 
 const MousePosition = () => {
