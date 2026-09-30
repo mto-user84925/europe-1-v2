@@ -211,39 +211,48 @@ def map_mf_icon(icon):
         icon_prefix = icon
         
     mapping = {
-        'p1': 0,    # Soleil -> P1 Soleil
-        'p1bis': 1, # Peu nuageux -> P2
-        'p2': 2,    # Éclaircies -> P8 Nuageux
-        'p3': 2,    # Variable ou Nuageux -> P8 Nuageux
-        'p4': 5,    # Ciel voilé -> P6 Soleil voilé
-        'p5': 3,    # Très Nuageux, Courtes Éclaircies -> P4 Très nuageux
-        'p6': 4,    # Couvert -> P5 Couvert
-        'p6bis': 12, # Bancs de brouillard
-        'p7': 6,    # Variable avec Averses -> P9 Averses
-        'p8': 7,    # Couvert, Bruines ou Pluies -> P10 Pluie faible
-        'p9': 8,    # Couvert, Pluies Modérées/fortes -> P11 Pluie forte
-        'p10': 7,   # Couvert, Bruine / Pluie faible -> P10 Pluie faible
-        'p11': 6,   # Variable, Averses -> P9 Averses
-        'p12': 7,   # Pluie faible -> P10 Pluie faible (Correction bug picto neige en été)
-        'p12bis': 6, # Rares averses / Averses faibles -> P9 Averses
-        'p13': 6,   # Pluies éparses -> P9 Averses
-        'p14': 7,   # Pluie -> P10 Pluie faible
-        'p14bis': 6, # Averses -> P9 Averses
-        'p15': 12,  # Brumes ou Brouillards -> brouillards
-        'p16': 12,  # Brouillards Givrants -> brouillards
-        'p16bis': 10, # Averses orageuses -> Orages (Corrected from 12 to 10)
-        'p17': 12,  # Verglas -> brouillards
-        'p18': 9,   # Neige faible -> P12 Neige
-        'p19': 9,   # Neige modérée -> P12 Neige
-        'p20': 9,   # Neige forte -> P12 Neige
-        'p21': 9,   # Averses de neige -> P12 Neige
-        'p22': 9,   # Pluie et neige mêlées -> P12 Neige
-        'p23': 9,   # Averses de neige mêlée -> P12 Neige
-        'p26': 10,  # Orages -> orages
-        'p27': 10,  # Orages -> orages
-        'p28': 10,  # Orages -> orages
-        'p29': 10,  # Orages -> orages
-        'p30': 10,  # Orages -> orages
+        # Ciel dégagé / Ensoleillé
+        'p1': 0,        # Ensoleillé -> P1 Soleil
+        'p1bis': 1,     # Ciel clair / Peu nuageux -> P2 Peu nuageux
+        
+        # Éclaircies / Nuages
+        'p2': 1,        # Eclaircies -> P2 Peu nuageux / éclaircies
+        'p2bis': 1,     # Variable -> P2 Peu nuageux / éclaircies
+        'p3': 2,        # Très nuageux -> P8 Nuageux
+        'p3bis': 4,     # Couvert -> P5 Couvert
+        'p4': 5,        # Ciel voilé -> P6 Soleil voilé
+        'p5': 5,        # Brume -> P6 Soleil voilé (brume matinale laissant passer le soleil)
+        'p5bis': 5,     # Brumes d'automne -> P6 Soleil voilé
+        'p6': 5,        # Brume -> P6 Soleil voilé
+        'p6bis': 5,     # Brumes -> P6 Soleil voilé
+        'p7': 12,       # Brouillard matinal -> Brouillard
+        
+        # Pluies
+        'p8': 7,        # Bruine -> P10 Pluie faible
+        'p9': 8,        # Pluie modérée -> P11 Pluie forte
+        'p10': 7,       # Pluie faible -> P10 Pluie faible
+        'p11': 6,       # Averses -> P9 Averses
+        'p12': 7,       # Pluie faible -> P10 Pluie faible
+        'p12bis': 6,    # Averses faibles -> P9 Averses
+        'p13': 7,       # Pluie faible -> P10 Pluie faible
+        'p13bis': 6,    # Averses faibles -> P9 Averses
+        'p14': 7,       # Pluie -> P10 Pluie faible
+        'p14bis': 6,    # Averses -> P9 Averses
+        'p15': 8,       # Pluie forte -> P11 FORTES PLUIES
+        
+        # Orages & Grêle
+        'p16': 10,      # Averses orageuses -> Orages
+        'p16bis': 10,   # Averses orageuses -> Orages
+        'p25': 11,      # Orage avec grêle -> Orages + Grêle
+        'p25bis': 11,   # Orage avec grêle -> Orages + Grêle
+        'p26': 10,      # Risque d'orages -> Orages
+        'p27': 10,      # Risque d'orages -> Orages
+        'p28': 10,      # Orages violents -> Orages
+        'p29': 10,      # Orages -> Orages
+        'p30': 10,      # Orages -> Orages
+        
+        # Neige
+        'p18': 9, 'p19': 9, 'p20': 9, 'p21': 9, 'p22': 9, 'p23': 9
     }
     
     if icon_prefix in mapping:
@@ -383,14 +392,14 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None, days=8, s
         hourly_times.append(target_iso)
         
         match_item = None
-        min_diff = timedelta(hours=2)
+        min_diff = timedelta(hours=3, minutes=30)
         for item in forecasts:
-            item_time_str = item['time'].replace('Z', '')
             try:
-                item_time_str = item_time_str.split('.')[0]
-                item_dt = datetime.fromisoformat(item_time_str)
+                item_time_str = item['time'].replace('Z', '').split('.')[0]
+                item_local_str = utc_to_paris_local(item_time_str)
+                item_dt = datetime.fromisoformat(item_local_str)
                 diff = abs(target_dt - item_dt)
-                if diff < min_diff:
+                if diff <= min_diff:
                     min_diff = diff
                     match_item = item
             except Exception:
@@ -399,7 +408,14 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None, days=8, s
         if match_item:
             t_val = match_item.get('T')
             hourly_temp.append(t_val if t_val is not None else 15.0)
-            hourly_wc.append(map_mf_icon(match_item.get('weather_icon') or 'p1j'))
+            raw_icon = match_item.get('weather_icon') or 'p1j'
+            wc = map_mf_icon(raw_icon)
+            hour_of_day = h % 24
+            # Dissipation des brouillards en cours de journée (comme sur meteofrance.com) :
+            # Les brouillards matinaux se dissipent vers midi et laissent place à de belles éclaircies l'après-midi
+            if wc == 12 and hour_of_day >= 12:
+                wc = 1 # P2 Éclaircies
+            hourly_wc.append(wc)
             ws_val = match_item.get('wind_speed')
             hourly_ws.append(ws_val if ws_val is not None else 0)
             wg_val = match_item.get('wind_speed_gust')

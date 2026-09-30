@@ -6731,7 +6731,11 @@
                 }
 
                 let finalCode = 0;
-                if (period === 'morning' || period === 'afternoon' || period === 'evening') {
+                if (isUsingMFData) {
+                    const hExact = period === 'morning' ? 8 : (period === 'afternoon' ? 14 : (period === 'evening' ? 19 : 14));
+                    const hIdx = period === 'hourly' ? hGlobal : (dayIdx * 24 + hExact);
+                    finalCode = loc.hourly.weathercode[hIdx] !== undefined ? loc.hourly.weathercode[hIdx] : (loc.hourly.weathercode[dayIdx * 24 + 12] || 0);
+                } else if (period === 'morning' || period === 'afternoon' || period === 'evening') {
                     // Option 3: 3-hour window (Matin = 8h-10h, Après-midi = 14h-16h, Soirée = 19h-21h)
                     const hours = period === 'morning' ? [8, 9, 10] : (period === 'afternoon' ? [14, 15, 16] : [19, 20, 21]);
                     const windowCodes = [];

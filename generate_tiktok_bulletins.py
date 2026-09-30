@@ -811,7 +811,7 @@ def tts_charon(text, output_wav, api_key):
         try:
             url = "https://openrouter.ai/api/v1/audio/speech"
             payload = {
-                "model": "google/gemini-3.8-flash-lite-tts",
+                "model": "google/gemini-3.8-flash-tts",
                 "input": clean_text,
                 "voice": "Charon",
                 "language": "fr-FR",
