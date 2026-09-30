@@ -90,3 +90,14 @@ jobs:
             --title "Bulletins TikTok France & HDF - $(date '+%d/%m/%Y')" \
             --notes "Bulletins météo 9:16 pour TikTok (100% cartes fixes, analyse Vision des pictos, voix continue Charon). Générés automatiquement le $(date '+%d/%m/%Y à %Hh%M')." \
             --latest
+
+      - name: 9. Envoyer l'e-mail de notification TikTok avec liens directs
+        env:
+          PYTHONUNBUFFERED: "1"
+          GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SFR_EMAIL: ${{ secrets.SFR_EMAIL }}
+          SFR_PASSWORD: ${{ secrets.SFR_PASSWORD }}
+        run: |
+          python send_bulletins_email.py "tiktok" "gregory"
+

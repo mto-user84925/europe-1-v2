@@ -51,15 +51,30 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
         recipients = ["gregory.langlet@sfr.fr", "langlet.gregory@gmail.com"]
 
     now_str = datetime.now().strftime("%d/%m/%Y")
-    mode_label = "Grand Public" if mode == "grand_public" else ("BTP Pro" if mode == "btp" else "Complet (Grand Public & BTP)")
-
-    # Liens GitHub Releases pour téléchargement direct
-    release_base = "https://github.com/mto-user84925/europe-1-v2/releases/download/bulletins-france-latest"
-    link_paysage = f"{release_base}/bulletin_{mode}_paysage_16_9.mp4"
-    link_tiktok = f"{release_base}/bulletin_{mode}_tiktok_9_16.mp4"
     releases_page = "https://github.com/mto-user84925/europe-1-v2/releases"
 
-    subject = f"🌤️ [Météo-Climat Pro] Vos Bulletins Vidéo France ({mode_label}) du {now_str} (pour demain J+1)"
+    if mode == "tiktok":
+        mode_label = "TikTok 9:16"
+        release_base = "https://github.com/mto-user84925/europe-1-v2/releases/download/tiktok-bulletins-latest"
+        link_primary = f"{release_base}/bulletin_tiktok_france.mp4"
+        link_secondary = f"{release_base}/bulletin_tiktok_hdf.mp4"
+        subject = f"📱 [Météo-Climat Pro] Vos Bulletins Vidéo TikTok du {now_str} (pour demain J+1)"
+        buttons_html = f"""
+      <a href="{link_primary}" class="btn btn-tiktok" style="color:white;">📱 Télécharger le Bulletin TIKTOK France (9:16)</a>
+      <a href="{link_secondary}" class="btn btn-paysage" style="color:white;">📱 Télécharger le Bulletin TIKTOK HDF (9:16)</a>
+      <a href="{releases_page}" class="btn btn-all" style="color:white;">📂 Accéder à la page des Releases GitHub</a>
+        """
+    else:
+        mode_label = "Grand Public" if mode == "grand_public" else ("BTP Pro" if mode == "btp" else "Complet (Grand Public & BTP)")
+        release_base = "https://github.com/mto-user84925/europe-1-v2/releases/download/bulletins-france-latest"
+        link_paysage = f"{release_base}/bulletin_{mode}_paysage_16_9.mp4"
+        link_tiktok = f"{release_base}/bulletin_{mode}_tiktok_9_16.mp4"
+        subject = f"🌤️ [Météo-Climat Pro] Vos Bulletins Vidéo France ({mode_label}) du {now_str} (pour demain J+1)"
+        buttons_html = f"""
+      <a href="{link_paysage}" class="btn btn-paysage" style="color:white;">📺 Télécharger le Bulletin PAYSAGE (16:9 - 1920x1080)</a>
+      <a href="{link_tiktok}" class="btn btn-tiktok" style="color:white;">📱 Télécharger le Bulletin TIKTOK (9:16 - 1080x1920)</a>
+      <a href="{releases_page}" class="btn btn-all" style="color:white;">📂 Accéder à la page des Releases GitHub</a>
+        """
 
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -89,12 +104,10 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
   </div>
   <div class="content">
     <p>Bonjour Grégory,</p>
-    <p>Les bulletins météo vidéo nationaux du <strong>{now_str}</strong> (démarrant à <strong>J+1</strong>) ont été générés avec succès par votre automatisation GitHub Actions !</p>
+    <p>Les bulletins météo vidéo du <strong>{now_str}</strong> (démarrant à <strong>J+1</strong>) ont été générés avec succès par votre automatisation GitHub Actions !</p>
 
     <div class="btn-group">
-      <a href="{link_paysage}" class="btn btn-paysage" style="color:white;">📺 Télécharger le Bulletin PAYSAGE (16:9 - 1920x1080)</a>
-      <a href="{link_tiktok}" class="btn btn-tiktok" style="color:white;">📱 Télécharger le Bulletin TIKTOK (9:16 - 1080x1920)</a>
-      <a href="{releases_page}" class="btn btn-all" style="color:white;">📂 Accéder à la page des Releases GitHub</a>
+{buttons_html}
     </div>
 
     <div class="card">
