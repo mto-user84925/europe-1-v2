@@ -42,7 +42,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt requests
-          playwright install chromium
+          playwright install --with-deps chromium
 
       - name: 5. Générer les cartes météo fraîches (7 jours portrait 9:16)
         env:
@@ -68,7 +68,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           ZONE_INPUT="${{ github.event.inputs.zone || 'both' }}"
-          python generate_tiktok_bulletins.py --zone "$ZONE_INPUT"
+          python generate_tiktok_bulletins.py --zone "$ZONE_INPUT" --orientation portrait --output-dir output_tiktok
 
       - name: 7. Sauvegarder les vidéos en Artifacts GitHub
         uses: actions/upload-artifact@v4

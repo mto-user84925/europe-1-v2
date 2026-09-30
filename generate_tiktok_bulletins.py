@@ -166,6 +166,15 @@ def collect_cards(zone, maps_dir, orientation="landscape"):
             if os.path.exists(fb):
                 p = fb
 
+        # Fallback orientation inverse (portrait <-> paysage) si absent
+        if not os.path.exists(p):
+            alt_name = filename.replace("_portrait", "") if suffix else filename.replace(".jpg", "_portrait.jpg")
+            alt_p = os.path.join(maps_dir, alt_name)
+            if os.path.exists(alt_p):
+                p = alt_p
+            elif os.path.exists(alt_p.replace(".jpg", ".png")):
+                p = alt_p.replace(".jpg", ".png")
+
         if os.path.exists(p):
             cards.append({"label": label, "path": p})
         else:
