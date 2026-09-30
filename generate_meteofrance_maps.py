@@ -411,9 +411,9 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None, days=8, s
             raw_icon = match_item.get('weather_icon') or 'p1j'
             wc = map_mf_icon(raw_icon)
             hour_of_day = h % 24
-            # Dissipation des brouillards en cours de journée (comme sur meteofrance.com) :
-            # Les brouillards matinaux se dissipent vers midi et laissent place à de belles éclaircies l'après-midi
-            if wc == 12 and hour_of_day >= 12:
+            # Dissipation des brouillards en cours de journée et sous douceur (comme sur meteofrance.com) :
+            # Les brouillards matinaux se dissipent en fin de matinée et ne persistent pas sous température >= 15°C
+            if wc == 12 and (hour_of_day >= 11 or (t_val is not None and t_val >= 15.0)):
                 wc = 1 # P2 Éclaircies
             hourly_wc.append(wc)
             ws_val = match_item.get('wind_speed')
@@ -451,7 +451,10 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None, days=8, s
                 est_temp = t_max - (t_max - t_min) * pct
                 
             hourly_temp.append(round(est_temp, 1) if est_temp is not None else 15.0)
-            hourly_wc.append(map_mf_icon(daily_icon))
+            wc_daily = map_mf_icon(daily_icon)
+            if wc_daily == 12 and (hour_of_day >= 11 or (est_temp is not None and est_temp >= 15.0)):
+                wc_daily = 1 # P2 Éclaircies
+            hourly_wc.append(wc_daily)
             hourly_ws.append(5)
             hourly_wg.append(0)  # will be replaced by Open-Meteo below
             hourly_precip.append(0)

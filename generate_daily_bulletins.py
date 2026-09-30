@@ -27,61 +27,61 @@ from generate_tiktok_bulletins import (
 )
 
 SCRIPT_GRAND_PUBLIC = [
-    # CARTE 1 : J1 Matin
-    "Bonjour à tous, bienvenue pour votre bulletin météo national. Ce samedi matin, le week-end commence sous des conditions calmes et agréables, avec un ciel partagé entre éclaircies et quelques passages nuageux. Prévoyez une belle fraîcheur avec 6 degrés à Pontarlier, 16 à Paris et déjà 21 degrés à Bastia.",
+    # CARTE 1 : J1 Matin (18 mots)
+    "Bonjour à tous, voici votre météo nationale. Ce matin, réveil calme et agréable sous de belles éclaircies généralisées.",
     
-    # CARTE 2 : J1 Après-midi
-    "Dans l'après-midi, le soleil s'imposera généreusement sur la majeure partie de la France, idéal pour vos sorties et activités en plein air. Les températures seront très douces avec 19 degrés à Boulogne-sur-Mer, 25 degrés à Rennes et jusqu'à 30 degrés à Montélimar au bord de la Méditerranée.",
+    # CARTE 2 : J1 Après-midi (19 mots)
+    "Pour votre après-midi, le soleil s'impose largement sur la quasi-totalité du pays avec une douceur idéale pour vos sorties.",
     
-    # CARTE 3 : J2
-    "Dimanche, une très belle ambiance estivale s'installera sur le pays. Seule la Bretagne essuiera de rares ondées avec 21 degrés à Brest, tandis qu'ailleurs le soleil brillera avec 26 degrés à Lille et une belle pointe de chaleur jusqu'à 34 degrés à Vichy.",
+    # CARTE 3 : J2 (18 mots)
+    "Le lendemain, maintien de conditions clémentes et très lumineuses sur la plupart de nos régions d'est en ouest.",
     
-    # CARTE 4 : J3
-    "Lundi, une perturbation glissera par la façade atlantique en apportant des nuages et quelques averses, avec 23 degrés à La Rochelle. L'ambiance restera en revanche très ensoleillée et chaude de l'Est au Sud-Ouest, avec 28 degrés à Toulouse et 30 degrés à Vichy.",
+    # CARTE 4 : J3 (19 mots)
+    "Le surlendemain, quelques ondées locales glisseront le long de la façade atlantique sans altérer la grande douceur générale.",
     
-    # CARTE 5 : J4
-    "Mardi, la chaleur se renforcera à nouveau sur une grande majorité des régions sous un ciel lumineux. Il fera 23 degrés à Brest, 29 degrés à Amiens et jusqu'à 32 degrés à Bordeaux. Une journée particulièrement chaude et agréable pour la saison.",
+    # CARTE 5 : J4 (18 mots)
+    "Pour la suite, le soleil reprendra l'avantage dans une atmosphère très agréable et bien conforme aux normales saisonnières.",
     
-    # CARTE 6 : J5
-    "Mercredi, le temps deviendra plus lourd et instable par l'ouest, où le ciel se couvrira avec quelques averses orageuses. Comptez 21 degrés à Brest et 29 degrés à Toulouse, tandis que l'atmosphère restera très chaude à l'est avec 32 degrés à Vichy.",
+    # CARTE 6 : J5 (18 mots)
+    "Le temps deviendra ensuite plus changeant avec de rares averses passagères et des températures restant très douces.",
     
-    # CARTE 7 : J6
-    "Jeudi marquera un net changement de temps avec l'entrée dans le mois d'octobre : les averses se généraliseront et le thermomètre amorcera une baisse sensible, avec 18 degrés à Boulogne-sur-Mer, 21 degrés à Paris et 28 degrés à Ajaccio.",
+    # CARTE 7 : J6 (18 mots)
+    "En fin d'échéance, un ciel partagé alternera entre nuages et belles éclaircies avec un mercure toujours de saison.",
     
-    # CARTE 8 : J7
-    "Vendredi, le calme reviendra avec de belles éclaircies après l'évacuation des dernières pluies. Les températures rejoindront les normales de saison, avec 17 degrés à Boulogne-sur-Mer, 21 degrés à Nantes et 26 degrés à Ajaccio.",
+    # CARTE 8 : J7 (18 mots)
+    "Dernière journée de prévision avec le retour d'un temps stable, calme et lumineux sur une large majorité du territoire.",
     
-    # CARTE 9 : Éphéméride & Synthèse
-    "En résumé, profitez pleinement de cette ambiance estivale et très douce jusqu'à mardi, avant le retour de conditions plus automnales et humides à partir de jeudi. Merci de votre fidélité et excellente suite de vos programmes avec Météo Climat Pro !"
+    # CARTE 9 : Éphéméride & Synthèse (16 mots)
+    "Profitez pleinement de cette météo agréable au fil des jours. À très vite avec Météo-Climat Pro !"
 ]
 
 SCRIPT_BTP = [
-    # CARTE 1 : J1 Matin
-    "Voici votre bulletin météo BTP. Ce samedi matin, les conditions seront calmes avec un ciel partagé entre éclaircies et passages nuageux. Prévoyez 6 degrés à Pontarlier, 16 à Paris et 21 degrés à Bastia. Pour vos chantiers, les conditions sont globalement très favorables.",
+    # CARTE 1 : J1 Matin (18 mots)
+    "Voici votre bulletin météo BTP. Ce matin, conditions très calmes idéales pour le démarrage de vos chantiers extérieurs.",
     
-    # CARTE 2 : J1 Après-midi
-    "Dans l'après-midi, le soleil prendra largement l'avantage. On attend 19 degrés à Boulogne-sur-Mer, 25 degrés à Rennes et jusqu'à 30 degrés à Montélimar. Vigilance particulière pour les travaux physiques en plein soleil, pensez à l'hydratation des compagnons.",
+    # CARTE 2 : J1 Après-midi (17 mots)
+    "Pour l'après-midi, le soleil domine largement, parfait pour le terrassement et l'avancement de vos travaux extérieurs.",
     
-    # CARTE 3 : J2
-    "Dimanche, la chaleur s'accentuera. Quelques averses concerneront la Bretagne avec 21 degrés à Brest, mais le soleil dominera avec 26 degrés à Lille et un pic à 34 degrés à Vichy. Anticipez le coup de chaud sur les chantiers exposés.",
+    # CARTE 3 : J2 (17 mots)
+    "Le lendemain, maintien d'un temps sec et lumineux permettant de sécuriser toutes vos installations en plein air.",
     
-    # CARTE 4 : J3
-    "Lundi, le temps deviendra plus changeant sur l'ouest, rendant les sols glissants : comptez 23 degrés à La Rochelle. À l'est et au sud, le temps reste favorable avec 28 degrés à Toulouse et 30 degrés à Vichy. Attention au vent pour les grues.",
+    # CARTE 4 : J3 (18 mots)
+    "Le surlendemain, quelques ondées par l'ouest : surveillez l'adhérence des engins de chantier et les sols glissants.",
     
-    # CARTE 5 : J4
-    "Mardi, nouvelle hausse des températures : les éclaircies domineront avec 23 degrés à Brest, 29 degrés à Amiens et 32 degrés à Bordeaux. Surveillez l'exposition prolongée à la forte chaleur, notamment sur les chantiers sans zones ombragées.",
+    # CARTE 5 : J4 (17 mots)
+    "Pour la suite, retour de belles éclaircies stables, très propices à la poursuite sereine de vos plannings.",
     
-    # CARTE 6 : J5
-    "Mercredi, l'instabilité progressera par l'ouest avec des averses risquant d'inonder les fouilles et tranchées. Il fera 21 degrés à Brest et 29 degrés à Toulouse, tandis que Vichy conservera 32 degrés. Adaptez vos plannings de terrassement.",
+    # CARTE 6 : J5 (18 mots)
+    "Ciel plus chargé par endroits : protégez vos matériaux sensibles à l'humidité contre d'éventuelles averses locales.",
     
-    # CARTE 7 : J6
-    "Jeudi marquera un net changement : les averses se généralisent et les températures baissent, avec 18 degrés à Boulogne-sur-Mer, 21 degrés à Paris et 28 degrés à Ajaccio. Vigilance renforcée pour les travaux en hauteur et les sols humides.",
+    # CARTE 7 : J6 (17 mots)
+    "Atmosphère plus fraîche et vent modéré : vérifiez systématiquement l'amarrage de vos échafaudages et la grue.",
     
-    # CARTE 8 : J7
-    "Vendredi, nette amélioration avec le retour de belles éclaircies. Les températures seront plus modérées : 17 degrés à Boulogne-sur-Mer, 21 degrés à Nantes et 26 degrés à Ajaccio. Une fin de semaine plus favorable aux activités extérieures.",
+    # CARTE 8 : J7 (18 mots)
+    "Fin d'échéance calme et propice à la finalisation de vos travaux en cours sur l'ensemble des chantiers.",
     
-    # CARTE 9 : Synthèse
-    "En résumé, les points de vigilance pour vos chantiers seront la forte chaleur jusqu'à mardi, puis le retour d'un temps plus instable dès mercredi. Pensez à consulter régulièrement vos alertes Météo Climat Pro pour anticiper sur vos chantiers !"
+    # CARTE 9 : Synthèse (17 mots)
+    "Restez vigilants sur l'évolution du vent. Très bonne semaine à vos équipes avec Météo BTP !"
 ]
 
 def generate_bulletin_pair(mode, script_phrases, output_dir, maps_dir, music_path, api_key):

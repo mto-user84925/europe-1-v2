@@ -212,28 +212,20 @@ WEATHER_LABELS = {
 }
 
 def get_exact_leaflet_weather(zone_data, cities_list, day_idx, period):
-    hours = [8, 9, 10] if period == 'morning' else [14, 15, 16]
+    h_target = 8 if period == 'morning' else 14
     result = {}
     for idx, loc in enumerate(zone_data):
         if idx >= len(cities_list):
             break
         cname = cities_list[idx]
         h_codes = loc.get('hourly', {}).get('weathercode', [])
-        window_codes = [h_codes[day_idx * 24 + h] for h in hours if (day_idx * 24 + h) < len(h_codes)]
-        if not window_codes:
-            window_codes = [0]
-        severe = [c for c in window_codes if c >= 6]
-        if severe:
-            prio = [11, 10, 9, 8, 7, 6, 12]
-            severe.sort(key=lambda c: prio.index(c) if c in prio else 99)
-            final_code = severe[0]
+        idx_exact = day_idx * 24 + h_target
+        if idx_exact < len(h_codes):
+            final_code = h_codes[idx_exact]
+        elif (day_idx * 24 + 12) < len(h_codes):
+            final_code = h_codes[day_idx * 24 + 12]
         else:
-            counts = {c: window_codes.count(c) for c in set(window_codes)}
-            max_c = max(counts.values())
-            candidates = [c for c, cnt in counts.items() if cnt == max_c]
-            tie_prio = [4, 3, 2, 1, 5, 0]
-            candidates.sort(key=lambda c: tie_prio.index(c) if c in tie_prio else 99)
-            final_code = candidates[0]
+            final_code = 0
         if period == 'morning':
             t_val = loc.get('daily', {}).get('temperature_2m_min', [12]*7)[day_idx]
         else:
@@ -632,8 +624,9 @@ EXIGENCES ÉDITORIALES DE HAUTE PRÉCISION :
 4. BAN ABSOLU DU MOT 'CELSIUS' (RÈGLE INVIOLABLE) :
    - Ne dis JAMAIS "degrés Celsius" ni "Celsius" ! Dis uniquement "degrés" ou le chiffre brut (ex: "6 degrés", "25 degrés"). N'écris jamais le symbole °C.
 {specific_rules}
-7. LONGUEUR PAR PHRASE :
-   - Entre 28 et 38 mots par phrase/carte (ne dépasse pas 40 mots pour un rythme vidéo fluide). Diction posée, naturelle et percutante. N'utilise aucun placeholder entre crochets.
+7. LONGUEUR PAR PHRASE & CONTRAINTE STRICTE DE DURÉE (1 MINUTE 30 MAXIMUM) :
+   - RÈGLE ABSOLUE : Le bulletin complet (les {len(cards)} phrases cumulées) DOIT IMPÉRATIVEMENT DURER MOINS DE 1 MINUTE 30 (90 secondes au total) !
+   - Pour respecter cette durée, chaque phrase doit faire STRICTEMENT entre 16 et 22 mots (JAMAIS plus de 24 mots par phrase !). Diction dynamique, naturelle, concise et percutante. N'utilise aucun placeholder entre crochets.
 
 Structure des {len(cards)} phrases dans l'ordre EXACT :
 - Phrase 1 (CARTE 1 : Matin)
@@ -751,31 +744,31 @@ Réponds UNIQUEMENT par un objet JSON valide avec la clé "phrases" contenant le
             except Exception as e_parse:
                 log(f"⚠️ Erreur parsing réponse IA ({e_parse})")
 
-    # Fallback propre à J+1
+    # Fallback propre à J+1 calibré strictement sous 1m30 (16-22 mots par phrase)
     log(f"ℹ️ Utilisation du fallback statique sécurisé ({mode})")
     if mode == "btp":
         return [
-            f"Voici votre bulletin météo BTP. On commence {start_phrase_cue} sur {zone_title} sous des conditions globalement calmes et favorables au démarrage des chantiers.",
-            "Pour votre après-midi de mardi, le temps restera sec et bien ensoleillé, idéal pour la poursuite des travaux extérieurs et le terrassement.",
-            "Mercredi, une météo stable et clémente permettra de maintenir vos installations en toute sécurité avant la reprise de la semaine.",
-            "Jeudi, quelques passages nuageux et ondées locales par l'ouest : surveillez les sols glissants et l'adhérence des engins.",
-            "Vendredi, retour d'une grande douceur généralisée sous un ciel lumineux, attention à l'exposition au soleil des équipes en plein air.",
-            "Samedi, ciel plus chargé avec de probables averses orageuses, pensez à bâcher vos matériaux sensibles à l'humidité.",
-            "Dimanche, atmosphère plus fraîche et vent modéré : vérifiez l'amarrage de vos échafaudages et la prise au vent des grues.",
-            "Lundi prochain, poursuite de conditions de saison, propices à la finalisation de vos plannings de travaux.",
-            "En conclusion, restez vigilants sur l'évolution du vent et les averses. Excellente fin de semaine et prenez soin de vos équipes avec Météo BTP et Météo-Climat Pro !"
+            f"Voici votre bulletin météo BTP. On commence {start_phrase_cue} avec des conditions calmes idéales pour démarrer vos chantiers.",
+            "Pour l'après-midi, le soleil s'impose largement, parfait pour la poursuite des travaux extérieurs et du terrassement.",
+            "Le lendemain, maintien d'un temps sec et clément pour sécuriser vos installations en toute sérénité.",
+            "Le surlendemain, quelques passages nuageux par l'ouest : surveillez l'adhérence des engins et les sols glissants.",
+            "Vendredi, grande douceur sous un ciel très lumineux, veillez à la bonne hydratation des équipes.",
+            "Samedi, ciel plus changeant avec de rares averses locales, protégez vos matériaux sensibles à l'humidité.",
+            "Dimanche, atmosphère plus fraîche et vent sensible : contrôlez l'amarrage de vos échafaudages et grues.",
+            "Lundi prochain, poursuite de conditions de saison, très favorables à l'avancement de vos plannings de travaux.",
+            "Restez vigilants sur l'évolution du vent. Très bonne semaine à vos équipes avec Météo BTP et Météo-Climat Pro !"
         ]
     else:
         return [
-            f"Bonjour à tous, bienvenue pour votre bulletin météo national. On commence {start_phrase_cue} sur {zone_title} avec un réveil calme et agréable.",
-            "Pour votre après-midi de mardi, le soleil s'imposera très largement avec des températures idéales pour vos activités extérieures et promenades.",
-            "Mercredi, une très belle journée lumineuse et douce s'annonce sur l'ensemble de vos régions pour clore le week-end.",
-            "Jeudi, quelques passages nuageux et ondées locales glisseront par l'ouest tandis que la douceur persistera ailleurs.",
-            "Vendredi, retour d'un bel ensoleillement généralisé sous un air particulièrement agréable pour la saison.",
-            "Samedi, ciel partagé avec quelques averses passagères et un thermomètre qui restera de saison.",
-            "Dimanche, atmosphère plus fraîche et nébulosité automnale, prévoyez un vêtement plus chaud pour vos sorties.",
-            "Lundi prochain, poursuite de conditions calmes avec de belles éclaircies après dissipation des brumes matinales.",
-            "En résumé, profitez pleinement de cette météo agréable au fil des jours. Merci de votre fidélité et excellente suite de vos programmes avec Météo-Climat Pro !"
+            f"Bonjour à tous, voici votre météo nationale. On commence {start_phrase_cue} sous un ciel très calme et agréable.",
+            "Pour votre après-midi, le soleil domine généreusement sur la majeure partie du pays, idéal pour vos sorties.",
+            "Le lendemain, une belle luminosité et une grande douceur s'annoncent sur l'ensemble de vos régions.",
+            "Le surlendemain, quelques ondées locales glisseront par l'ouest tandis que la douceur persistera ailleurs.",
+            "Vendredi, grand soleil généralisé sous un air particulièrement agréable et de saison sur tout le pays.",
+            "Samedi, ciel partagé avec quelques averses passagères et un thermomètre qui restera très doux.",
+            "Dimanche, nébulosité plus marquée et fraîcheur de saison, prévoyez une veste pour vos activités extérieures.",
+            "Lundi prochain, retour de belles éclaircies après dissipation rapide des quelques brumes matinales.",
+            "Profitez pleinement de cette météo agréable au fil des jours. À très vite avec Météo-Climat Pro !"
         ]
 
 def round_gusts_in_text(text):
@@ -815,7 +808,13 @@ def tts_charon(text, output_wav, api_key):
                 "input": clean_text,
                 "voice": "Charon",
                 "language": "fr-FR",
-                "instructions": "Voix de présentateur météo professionnel expert pour le secteur du BTP et grand public. Prononciation avec un accent français métropolitain standard (parisien), diction parfaitement articulée sur les noms de villes françaises et régionales (notamment Ajaccio prononcé [a-jak-sio], Bastia, etc.), ton dynamique, direct, sérieux et chaleureux, sans aucun accent étranger. Ne prononce JAMAIS le mot 'celsius', dis toujours 'degrés'. Ne cite JAMAIS aucun nom personnel ni Patrick Marlière."
+                "instructions": (
+                    "The speaker is an experienced, authoritative French television weather presenter and meteorologist for a major national news channel. "
+                    "He speaks standard metropolitan Parisian French with crisp European French articulation, warm authority, and a dynamic, fluid, natural broadcast TV delivery. "
+                    "Diction is energetic, clear, engaging, and professional, without long pauses or hesitation between sentences. "
+                    "Every city and regional name is articulated with precision. "
+                    "Never pronounce 'celsius', always say 'degrés'."
+                )
             }
             req = urllib.request.Request(
                 url,
@@ -901,7 +900,29 @@ def compile_video(zone, cards, script_phrases, output_path, music_path, api_key,
         log(f"   Carte {i+1} ({dur}s) : {text}")
 
     total_duration = sum(durations)
-    log(f"⏱️ Durée totale prévue : {total_duration:.2f}s (~{int(total_duration//60)}m{int(total_duration%60):02d}s)")
+    log(f"⏱️ Durée totale mesurée : {total_duration:.2f}s (~{int(total_duration//60)}m{int(total_duration%60):02d}s)")
+
+    # Clamping strict à 1m30 maximum (<= 89 secondes)
+    if total_duration > 90.0:
+        speed_factor = min(1.6, max(1.05, round(total_duration / 88.0, 3)))
+        log(f"⚠️ Durée totale ({total_duration:.1f}s) > 90s : ajustement de vitesse automatique x{speed_factor} pour garantir <= 1m30...")
+        clamped_durations = []
+        clamped_clips = []
+        for i in range(n_cards):
+            c_wav = os.path.join(temp_dir, f"clamped_{i:02d}.wav")
+            subprocess.run([
+                "ffmpeg", "-y", "-i", audio_clips[i],
+                "-filter:a", f"atempo={speed_factor}",
+                "-ar", "24000", c_wav
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            with wave.open(c_wav, "rb") as wf:
+                c_dur = round(wf.getnframes() / wf.getframerate(), 2)
+            clamped_durations.append(c_dur)
+            clamped_clips.append(c_wav)
+        durations = clamped_durations
+        audio_clips = clamped_clips
+        total_duration = sum(durations)
+        log(f"⏱️ Nouvelle durée totale garantie : {total_duration:.2f}s (<= 90s) !")
 
     # 2. Clips vidéo calés sur la voix
     log(f"🖼️ [2/3] Encodage des cartes fixes ({ENCODER})...")
