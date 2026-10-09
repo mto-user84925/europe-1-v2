@@ -43,8 +43,10 @@ function getSaint(dateObj) {
     const list = saintsData[month] || [];
     if (dayIdx < list.length) {
         const item = list[dayIdx];
-        const name = item[0] || '';
+        let name = item[0] || '';
         const prefix = item[1] || '';
+        // Règle Big Company / iTCL : simplification des prénoms usuels courts
+        name = name.replace(/\s+(de\s+l'Enfant.*|d'Avila|de\s+Sales|de\s+Padoue|d'Aquin|de\s+Sienne|de\s+Loyola|de\s+Paul|d'Assise|de\s+Capistran|Fourier|le\s+Bon|de\s+Dieu|de\s+la\s+Salle|de\s+la\s+Marche)$/i, '').trim();
         if (prefix === 'Saint') return `St ${name}`;
         if (prefix === 'Sainte') return `Ste ${name}`;
         if (prefix) return `${prefix} ${name}`.trim();
