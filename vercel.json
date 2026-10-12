@@ -1,6 +1,7 @@
 {
   "version": 2,
   "cleanUrls": true,
+  "ignoreCommand": "git log -1 --pretty=%B | grep -q 'skip ci' && exit 0 || exit 1",
   "rewrites": [
     { "source": "/rss/bigcompany.php", "destination": "/api/bigcompany" },
     { "source": "/api/rss_lyon.xml", "destination": "/api/bigcompany" },
