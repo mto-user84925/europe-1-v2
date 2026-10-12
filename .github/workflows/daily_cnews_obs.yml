@@ -46,7 +46,7 @@ jobs:
           git add meteofrance_data*.json meteofrance_*.csv meteofrance_token.json
           git diff --staged --quiet
           if ($LASTEXITCODE -ne 0) {
-              git commit -m "Mise à jour automatique des prévisions Météo-France, CSV et token [skip vercel]"
+              git commit -m "Mise à jour automatique des prévisions Météo-France, CSV et token [skip ci] [skip vercel]"
               git push origin main
           } else {
               Write-Output "Aucun changement détecté dans les prévisions."
