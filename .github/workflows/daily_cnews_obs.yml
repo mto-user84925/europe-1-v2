@@ -1,9 +1,11 @@
 name: Actualisation Prévisions - Site Web Météo-France
 
 on:
-  schedule:
-    # Toutes les 2 heures (à la minute 45)
-    - cron: '45 */2 * * *'
+  # Delegue a cron-job.org (job 8194876, toutes les 2 h a xx:45) : le cron
+  # GitHub est neutralise pour eviter une double execution.
+  # schedule:
+  #   # Toutes les 2 heures (à la minute 45)
+  #   - cron: '45 */2 * * *'
   workflow_dispatch: # Permet de lancer la génération manuellement depuis GitHub
 
 permissions:
