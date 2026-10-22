@@ -7,8 +7,12 @@ on:
         description: 'arome | ecmwf | icon-eu | all'
         required: false
         default: 'all'
-  schedule:
-    - cron: '30 1,4,7,10,13,16,19,22 * * *'
+  # OBSOLETE : reliquat d'avant la scission des depots meteo. Echouait
+  # systematiquement en schedule. Production des modeles assuree par
+  # arome-weather-map (8321969) et gfs-weather-map (8339240/8339245/
+  # 8339246/8497397). Cron neutralise pour eviter les doublons.
+  # schedule:
+  #   - cron: '30 1,4,7,10,13,16,19,22 * * *'
 
 jobs:
   pipeline:
