@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: 1. Récupérer le code du dépôt
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: 2. Installer FFmpeg
         run: |
