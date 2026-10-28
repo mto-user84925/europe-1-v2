@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Envoi automatique de l'e-mail de notification pour les Bulletins Météo France (J+1)
-- Liens directs de téléchargement des deux vidéos (Paysage 16:9 & TikTok 9:16)
+Envoi automatique de l'e-mail de notification pour les Bulletins Météo France & Hauts-de-France (J+1)
+- Liens directs de téléchargement des vidéos (Paysage 16:9 & TikTok 9:16)
 - Script complet et synthèse météo
-- Envoi sécurisé via SMTP SFR (gregory.langlet@sfr.fr)
+- Envoi sécurisé via SMTP Gmail / SFR
 """
 
 import os
@@ -15,7 +15,7 @@ from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
+def send_bulletin_notification(mode="grand_public", triggered_by="gregory", zone="both"):
     gmail_user = (os.environ.get("GMAIL_EMAIL") or "langlet.gregory@gmail.com").strip().replace("\ufeff", "").replace("\u200b", "")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
     if gmail_pass:
@@ -64,17 +64,44 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
       <a href="{link_secondary}" class="btn btn-paysage" style="color:white;">📱 Télécharger le Bulletin TIKTOK HDF (9:16)</a>
       <a href="{releases_page}" class="btn btn-all" style="color:white;">📂 Accéder à la page des Releases GitHub</a>
         """
+        zone_text = "France & Hauts-de-France"
     else:
         mode_label = "Grand Public" if mode == "grand_public" else ("BTP Pro" if mode == "btp" else "Complet (Grand Public & BTP)")
         release_base = "https://github.com/mto-user84925/europe-1-v2/releases/download/bulletins-france-latest"
-        link_paysage = f"{release_base}/bulletin_{mode}_paysage_16_9.mp4"
-        link_tiktok = f"{release_base}/bulletin_{mode}_tiktok_9_16.mp4"
-        subject = f"🌤️ [Météo-Climat Pro] Vos Bulletins Vidéo France ({mode_label}) du {now_str} (pour demain J+1)"
-        buttons_html = f"""
-      <a href="{link_paysage}" class="btn btn-paysage" style="color:white;">📺 Télécharger le Bulletin PAYSAGE (16:9 - 1920x1080)</a>
-      <a href="{link_tiktok}" class="btn btn-tiktok" style="color:white;">📱 Télécharger le Bulletin TIKTOK (9:16 - 1080x1920)</a>
-      <a href="{releases_page}" class="btn btn-all" style="color:white;">📂 Accéder à la page des Releases GitHub</a>
-        """
+        
+        link_fr_paysage = f"{release_base}/bulletin_{mode}_paysage_16_9.mp4"
+        link_fr_tiktok = f"{release_base}/bulletin_{mode}_tiktok_9_16.mp4"
+        link_hdf_paysage = f"{release_base}/bulletin_hdf_{mode}_paysage_16_9.mp4"
+        link_hdf_tiktok = f"{release_base}/bulletin_hdf_{mode}_tiktok_9_16.mp4"
+
+        buttons = []
+        if zone in ["both", "france"]:
+            buttons.append(f"""
+      <div style="margin: 12px 0 6px; font-weight: 700; color: #1e293b; font-size: 15px;">🇫🇷 Bulletins Nationaux (France) :</div>
+      <a href="{link_fr_paysage}" class="btn btn-paysage" style="color:white;">📺 Télécharger le Bulletin France PAYSAGE (16:9 - 1920x1080)</a>
+      <a href="{link_fr_tiktok}" class="btn btn-tiktok" style="color:white;">📱 Télécharger le Bulletin France TIKTOK (9:16 - 1080x1920)</a>
+            """)
+
+        if zone in ["both", "hdf"]:
+            buttons.append(f"""
+      <div style="margin: 16px 0 6px; font-weight: 700; color: #0284c7; font-size: 15px;">⚜️ Bulletins Régionaux (Hauts-de-France) :</div>
+      <a href="{link_hdf_paysage}" class="btn btn-paysage" style="color:white; background: linear-gradient(135deg, #0284c7, #0369a1);">📺 Télécharger le Bulletin HDF PAYSAGE (16:9 - 1920x1080)</a>
+      <a href="{link_hdf_tiktok}" class="btn btn-tiktok" style="color:white; background: linear-gradient(135deg, #0d9488, #0f766e);">📱 Télécharger le Bulletin HDF TIKTOK (9:16 - 1080x1920)</a>
+            """)
+
+        buttons.append(f'<a href="{releases_page}" class="btn btn-all" style="color:white; margin-top: 10px;">📂 Accéder à la page des Releases GitHub</a>')
+        buttons_html = "\n".join(buttons)
+
+        if zone == "hdf":
+            zone_text = "Hauts-de-France"
+        elif zone == "france":
+            zone_text = "France"
+        else:
+            zone_text = "France & Hauts-de-France"
+
+        subject = f"🌤️ [Météo-Climat Pro] Vos Bulletins Vidéo {zone_text} ({mode_label}) du {now_str} (pour demain J+1)"
+
+    salutation = "Patrick et Grégory" if trig == "patrick" else "Grégory"
 
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -87,7 +114,7 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
   .header h1 {{ margin: 0; font-size: 22px; font-weight: 700; }}
   .header p {{ margin: 6px 0 0; font-size: 14px; opacity: 0.9; }}
   .content {{ padding: 24px; }}
-  .btn-group {{ display: flex; flex-direction: column; gap: 12px; margin: 20px 0; }}
+  .btn-group {{ display: flex; flex-direction: column; gap: 10px; margin: 20px 0; }}
   .btn {{ display: block; text-align: center; padding: 14px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px; color: white; }}
   .btn-paysage {{ background-color: #2563eb; }}
   .btn-tiktok {{ background-color: #059669; }}
@@ -100,11 +127,11 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
 <div class="container">
   <div class="header">
     <h1>MÉTÉO-CLIMAT PRO</h1>
-    <p>Bulletins Vidéo Quotidiens — Mode {mode_label} (J+1)</p>
+    <p>Bulletins Vidéo Quotidiens — {zone_text} — Mode {mode_label} (J+1)</p>
   </div>
   <div class="content">
-    <p>Bonjour Grégory,</p>
-    <p>Les bulletins météo vidéo du <strong>{now_str}</strong> (démarrant à <strong>J+1</strong>) ont été générés avec succès par votre automatisation GitHub Actions !</p>
+    <p>Bonjour {salutation},</p>
+    <p>Les bulletins météo vidéo pour <strong>{zone_text}</strong> du <strong>{now_str}</strong> (démarrant à <strong>J+1</strong>) ont été générés avec succès par votre automatisation avec voix off IA Charon !</p>
 
     <div class="btn-group">
 {buttons_html}
@@ -170,4 +197,5 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory"):
 if __name__ == "__main__":
     mode_arg = sys.argv[1] if len(sys.argv) > 1 else "grand_public"
     trig_arg = sys.argv[2] if len(sys.argv) > 2 else "gregory"
-    send_bulletin_notification(mode_arg, trig_arg)
+    zone_arg = sys.argv[3] if len(sys.argv) > 3 else "both"
+    send_bulletin_notification(mode_arg, trig_arg, zone_arg)

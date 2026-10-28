@@ -250,24 +250,25 @@ def format_card_spatial_summary(zone, exact_data):
     sun_cities = [(c, info['temp'], info['label']) for c, info in exact_data.items() if 'SOLEIL' in info['label']]
     min_city, min_info = min(exact_data.items(), key=lambda x: x[1]['temp'])
     max_city, max_info = max(exact_data.items(), key=lambda x: x[1]['temp'])
-    blois_info = exact_data.get('Blois')
-    blois_text = f"BLOIS : {blois_info['temp']} degrés sous un ciel {blois_info['label'].lower()}." if blois_info else ""
+    ref_info = exact_data.get('Lille') if zone == 'hdf' else exact_data.get('Blois')
+    ref_name = 'LILLE' if zone == 'hdf' else 'BLOIS'
+    ref_text = f"{ref_name} : {ref_info['temp']} degrés sous un ciel {ref_info['label'].lower()}." if ref_info else ""
 
     if len(rain_cities) == 0:
         if len(cloud_cities) >= len(sun_cities):
-            vis_desc = f"Ciel nuageux et couvert mais SEC sur l'ensemble des {total} communes (aucune pluie). {blois_text}"
+            vis_desc = f"Ciel nuageux et couvert mais SEC sur l'ensemble des {total} communes (aucune pluie). {ref_text}"
         else:
-            vis_desc = f"Plein soleil radieux et SEC sur l'ensemble des {total} communes (aucune pluie). {blois_text}"
+            vis_desc = f"Plein soleil radieux et SEC sur l'ensemble des {total} communes (aucune pluie). {ref_text}"
     elif len(rain_cities) < total:
         rain_str = ", ".join(f"{c} ({t} degrés, {lbl.lower()})" for c, t, lbl in rain_cities)
         dry_type = "nuageux" if len(cloud_cities) >= len(sun_cities) else "ensoleillé"
         vis_desc = (
             f"⚠️ CONTRASTE SPATIAL MARQUÉ : Averses/pluies localisées UNIQUEMENT sur {len(rain_cities)}/{total} communes : [{rain_str}]. "
             f"Tout le reste de la région ({total - len(rain_cities)} communes) reste parfaitement sec sous un ciel {dry_type} ! "
-            f"INTERDICTION FORMELLE de généraliser la pluie ! {blois_text}"
+            f"INTERDICTION FORMELLE de généraliser la pluie ! {ref_text}"
         )
     else:
-        vis_desc = f"Pluies ou averses généralisées sur les {total} communes. {blois_text}"
+        vis_desc = f"Pluies ou averses généralisées sur les {total} communes. {ref_text}"
 
     return {
         "vis_desc": vis_desc,
@@ -593,6 +594,9 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
         if zone == "cvl":
             intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP pour la région Centre-Val de Loire, avec un focus sur Blois et le Loir-et-Cher. On commence {start_phrase_cue}, avec..."'
             phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité pour le Centre-Val de Loire et le secteur de Blois, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
+        elif zone == "hdf":
+            intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP pour les Hauts-de-France. On commence {start_phrase_cue}, avec..."'
+            phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité pour les Hauts-de-France, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
         else:
             intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP. On commence {start_phrase_cue}, avec..."'
             phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
@@ -608,7 +612,14 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
     else:
         persona = "Tu es un présentateur météorologue officiel pour Météo-Climat Pro."
         audience = f"le bulletin météo national grand public officiel, destiné aux téléspectateurs pour la météo au quotidien, les activités extérieures et les prévisions de la semaine pour {zone_title}."
-        intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo national. On commence {start_phrase_cue}, avec..."'
+        if zone == "france":
+            intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo national. On commence {start_phrase_cue}, avec..."'
+        elif zone == "hdf":
+            intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo des Hauts-de-France. On commence {start_phrase_cue}, avec..."'
+        elif zone == "cvl":
+            intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo de la région Centre-Val de Loire. On commence {start_phrase_cue}, avec..."'
+        else:
+            intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo de {zone_title}. On commence {start_phrase_cue}, avec..."'
         specific_rules = """5. CONSEILS GRAND PUBLIC & SORTIES :
    - Décris l'ambiance météo de manière vivante (soleil, éclaircies, parapluie nécessaire ou non, ressenti doux ou frais).
    - Donne des conseils pour les sorties, activités de plein air et le week-end."""

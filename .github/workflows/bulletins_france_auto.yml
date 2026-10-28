@@ -1,4 +1,4 @@
-name: Bulletins Météo France Auto (Paysage 16:9 & TikTok 9:16)
+name: Bulletins Météo France & HDF Auto (Paysage 16:9 & TikTok 9:16)
 
 on:
   schedule:
@@ -6,6 +6,15 @@ on:
     - cron: '0 5 * * *'
   workflow_dispatch:
     inputs:
+      zone:
+        description: "Zone(s) à générer"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - both
+          - france
+          - hdf
       mode:
         description: "Mode de rédaction du bulletin"
         required: true
@@ -56,20 +65,34 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: |
-          echo "=== 1/2 Génération des cartes Paysage 16:9 (J+1 à J+7) ==="
-          python generate_meteofrance_maps.py --zone france_pictos --days 8 --start-tomorrow --orientation landscape --patrick
+          ZONE_INPUT="${{ github.event.inputs.zone || 'both' }}"
+          echo "Génération des cartes pour la zone : $ZONE_INPUT"
 
-          echo "=== 2/2 Génération des cartes Portrait 9:16 (J+1 à J+7) ==="
-          python generate_meteofrance_maps.py --zone france_pictos --days 8 --start-tomorrow --orientation portrait --patrick
+          if [ "$ZONE_INPUT" = "both" ] || [ "$ZONE_INPUT" = "france" ]; then
+            echo "=== 1/2 Cartes France Paysage 16:9 (J+1 à J+7) ==="
+            python generate_meteofrance_maps.py --zone france_pictos --days 8 --start-tomorrow --orientation landscape --patrick
 
-      - name: 6. Compiler les deux formats vidéo (Paysage 16:9 & TikTok 9:16)
+            echo "=== 2/2 Cartes France Portrait 9:16 (J+1 à J+7) ==="
+            python generate_meteofrance_maps.py --zone france_pictos --days 8 --start-tomorrow --orientation portrait --patrick
+          fi
+
+          if [ "$ZONE_INPUT" = "both" ] || [ "$ZONE_INPUT" = "hdf" ]; then
+            echo "=== 1/2 Cartes Hauts-de-France Paysage 16:9 (J+1 à J+7) ==="
+            python generate_meteofrance_maps.py --zone hdf --days 8 --start-tomorrow --orientation landscape --patrick
+
+            echo "=== 2/2 Cartes Hauts-de-France Portrait 9:16 (J+1 à J+7) ==="
+            python generate_meteofrance_maps.py --zone hdf --days 8 --start-tomorrow --orientation portrait --patrick
+          fi
+
+      - name: 6. Compiler les deux formats vidéo avec Voix Off (Paysage 16:9 & TikTok 9:16)
         env:
           PYTHONUNBUFFERED: "1"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           MODE="${{ github.event.inputs.mode || 'grand_public' }}"
-          echo "Lancement de la compilation pour le mode : $MODE"
-          python generate_daily_bulletins.py --mode "$MODE"
+          ZONE_INPUT="${{ github.event.inputs.zone || 'both' }}"
+          echo "Lancement de la compilation pour le mode : $MODE et zone : $ZONE_INPUT"
+          python generate_daily_bulletins.py --mode "$MODE" --zone "$ZONE_INPUT"
 
       - name: 7. Sauvegarder les vidéos en Artifacts GitHub
         uses: actions/upload-artifact@v4
@@ -88,8 +111,8 @@ jobs:
 
           # Créer la release avec les vidéos .mp4
           gh release create "$TAG" output_bulletins/*.mp4 \
-            --title "Bulletins Météo France (Paysage & TikTok) - $(date '+%d/%m/%Y')" \
-            --notes "Bulletins météo officiels France à J+1 (Format Paysage 16:9 broadcast + Format TikTok 9:16). Générés automatiquement le $(date '+%d/%m/%Y à %Hh%M')." \
+            --title "Bulletins Météo France & HDF (Paysage & TikTok) - $(date '+%d/%m/%Y')" \
+            --notes "Bulletins météo officiels France & Hauts-de-France à J+1 (Format Paysage 16:9 broadcast + Format TikTok 9:16 avec voix off Charon). Générés automatiquement le $(date '+%d/%m/%Y à %Hh%M')." \
             --latest
 
       - name: 9. Envoyer l'e-mail de notification avec liens directs
@@ -103,5 +126,5 @@ jobs:
         run: |
           MODE="${{ github.event.inputs.mode || 'grand_public' }}"
           TRIG="${{ github.event.inputs.triggered_by || 'gregory' }}"
-          python send_bulletins_email.py "$MODE" "$TRIG"
-
+          ZONE_INPUT="${{ github.event.inputs.zone || 'both' }}"
+          python send_bulletins_email.py "$MODE" "$TRIG" "$ZONE_INPUT"
