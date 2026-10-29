@@ -1,3 +1,6 @@
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 import os
 import re
 import json
@@ -85,8 +88,6 @@ FALLBACK_CITIES = [
 
 def get_zone_cities(zone_key):
     """Dynamically parses index.html to extract the cities list for a given zone."""
-    if zone_key == "grandest":
-        zone_key = "grand-est"
     index_path = os.path.join(PROJECT_DIR, "index.html")
     if not os.path.exists(index_path):
         return None
@@ -94,42 +95,56 @@ def get_zone_cities(zone_key):
         with open(index_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         
-        # Locate the start of the zone configuration
-        start_pos = content.find(f"{zone_key}: {{")
-        if start_pos == -1:
-            start_pos = content.find(f"'{zone_key}': {{")
-        if start_pos == -1:
-            start_pos = content.find(f'"{zone_key}": {{')
-            
+        ZONE_MAP = {
+            'idf': 'ile-de-france',
+            'grandest': 'grand-est',
+            'ile-de-france': 'idf',
+            'grand-est': 'grandest'
+        }
+        keys = [zone_key]
+        if zone_key in ZONE_MAP:
+            keys.append(ZONE_MAP[zone_key])
+
+        start_pos = -1
+        for k in keys:
+            for pattern in [f"{k}: {{", f"'{k}': {{", f'"{k}": {{']:
+                p = content.find(pattern)
+                if p != -1:
+                    start_pos = p
+                    break
+            if start_pos != -1:
+                break
+
         if start_pos == -1:
             return None
-            
-        cities_start = content.find("cities: [", start_pos)
-        if cities_start == -1:
+
+        m_cities = re.search(r'["\']?cities["\']?\s*:\s*\[', content[start_pos:])
+        if not m_cities:
             return None
-        
-        # Match closing bracket of cities array
+        cities_start = start_pos + m_cities.end() - 1
+
         bracket_count = 1
-        pos = cities_start + len("cities: [")
+        pos = cities_start + 1
         while pos < len(content) and bracket_count > 0:
             if content[pos] == '[':
                 bracket_count += 1
             elif content[pos] == ']':
                 bracket_count -= 1
             pos += 1
-            
-        cities_str = content[cities_start + len("cities: [") : pos - 1]
-        
-        # Regex to parse objects like { name: "...", lat: ..., lon: ... }
-        pattern = r'\{\s*name:\s*["\']([^"\']+)["\']\s*,\s*lat:\s*([0-9.-]+)\s*,\s*lon:\s*([0-9.-]+)'
+
+        cities_str = content[cities_start + 1 : pos - 1]
+
+        # Regex to parse objects like { name: "...", lat: ..., lon: ... } with or without quotes
+        pattern = r'\{\s*["\']?name["\']?\s*:\s*(?:"([^"]+)"|\'([^\']+)\')\s*,\s*["\']?lat["\']?\s*:\s*([0-9.-]+)\s*,\s*["\']?lon["\']?\s*:\s*([0-9.-]+)'
         matches = re.findall(pattern, cities_str)
-        
+
         cities = []
-        for name, lat, lon in matches:
+        for m in matches:
+            name = m[0] or m[1]
             cities.append({
                 "name": name,
-                "lat": float(lat),
-                "lon": float(lon)
+                "lat": float(m[2]),
+                "lon": float(m[3])
             })
         return cities if cities else None
     except Exception as e:
@@ -157,7 +172,7 @@ def get_session_token():
     
     mfsession = None
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             headers = response.getheaders()
             for header, value in headers:
                 if header.lower() == 'set-cookie' and 'mfsession=' in value:
@@ -167,13 +182,24 @@ def get_session_token():
                         break
     except Exception as e:
         print("Error fetching main page:", e)
-        return None
         
-    if not mfsession:
-        print("Could not find mfsession cookie.")
-        return None
-        
-    return rot13(urllib.parse.unquote(mfsession))
+    if mfsession:
+        return rot13(urllib.parse.unquote(mfsession))
+
+    # Fallback to meteofrance_token.json if available
+    token_file = os.path.join(PROJECT_DIR, "meteofrance_token.json")
+    if os.path.exists(token_file):
+        try:
+            with open(token_file, "r", encoding="utf-8") as f:
+                tdata = json.load(f)
+                if tdata.get("token"):
+                    print("Using fallback token from meteofrance_token.json")
+                    return tdata.get("token")
+        except Exception:
+            pass
+
+    print("Could not find mfsession cookie.")
+    return None
 
 def map_mf_icon(icon):
     if not icon:
@@ -185,39 +211,48 @@ def map_mf_icon(icon):
         icon_prefix = icon
         
     mapping = {
-        'p1': 0,    # Soleil -> P1 Soleil
-        'p1bis': 1, # Peu nuageux -> P2
-        'p2': 2,    # Éclaircies -> P8 Nuageux
-        'p3': 2,    # Variable ou Nuageux -> P8 Nuageux
-        'p4': 5,    # Ciel voilé -> P6 Soleil voilé
-        'p5': 3,    # Très Nuageux, Courtes Éclaircies -> P4 Très nuageux
-        'p6': 4,    # Couvert -> P5 Couvert
-        'p6bis': 12, # Bancs de brouillard
-        'p7': 6,    # Variable avec Averses -> P9 Averses
-        'p8': 7,    # Couvert, Bruines ou Pluies -> P10 Pluie faible
-        'p9': 8,    # Couvert, Pluies Modérées/fortes -> P11 Pluie forte
-        'p10': 7,   # Couvert, Bruine / Pluie faible -> P10 Pluie faible
-        'p11': 6,   # Variable, Averses -> P9 Averses
-        'p12': 6,   # Averses -> P9 Averses
-        'p12bis': 6, # Averses faibles -> P9 Averses
-        'p13': 6,   # Pluies éparses -> P9 Averses
-        'p14': 7,   # Pluie -> P10 Pluie faible
-        'p14bis': 6, # Averses -> P9 Averses
-        'p15': 12,  # Brumes ou Brouillards -> brouillards
-        'p16': 12,  # Brouillards Givrants -> brouillards
-        'p16bis': 10, # Averses orageuses -> Orages (Corrected from 12 to 10)
-        'p17': 12,  # Verglas -> brouillards
-        'p18': 9,   # Neige faible -> P12 Neige
-        'p19': 9,   # Neige modérée -> P12 Neige
-        'p20': 9,   # Neige forte -> P12 Neige
-        'p21': 9,   # Averses de neige -> P12 Neige
-        'p22': 9,   # Pluie et neige mêlées -> P12 Neige
-        'p23': 9,   # Averses de neige mêlée -> P12 Neige
-        'p26': 10,  # Orages -> orages
-        'p27': 10,  # Orages -> orages
-        'p28': 10,  # Orages -> orages
-        'p29': 10,  # Orages -> orages
-        'p30': 10,  # Orages -> orages
+        # Ciel dégagé / Ensoleillé
+        'p1': 0,        # Ensoleillé -> P1 Soleil
+        'p1bis': 1,     # Ciel clair / Peu nuageux -> P2 Peu nuageux
+        
+        # Éclaircies / Nuages
+        'p2': 1,        # Eclaircies -> P2 Peu nuageux / éclaircies
+        'p2bis': 1,     # Variable -> P2 Peu nuageux / éclaircies
+        'p3': 2,        # Très nuageux -> P8 Nuageux
+        'p3bis': 4,     # Couvert -> P5 Couvert
+        'p4': 5,        # Ciel voilé -> P6 Soleil voilé
+        'p5': 5,        # Brume -> P6 Soleil voilé (brume matinale laissant passer le soleil)
+        'p5bis': 5,     # Brumes d'automne -> P6 Soleil voilé
+        'p6': 5,        # Brume -> P6 Soleil voilé
+        'p6bis': 5,     # Brumes -> P6 Soleil voilé
+        'p7': 12,       # Brouillard matinal -> Brouillard
+        
+        # Pluies
+        'p8': 7,        # Bruine -> P10 Pluie faible
+        'p9': 8,        # Pluie modérée -> P11 Pluie forte
+        'p10': 7,       # Pluie faible -> P10 Pluie faible
+        'p11': 6,       # Averses -> P9 Averses
+        'p12': 7,       # Pluie faible -> P10 Pluie faible
+        'p12bis': 6,    # Averses faibles -> P9 Averses
+        'p13': 7,       # Pluie faible -> P10 Pluie faible
+        'p13bis': 6,    # Averses faibles -> P9 Averses
+        'p14': 7,       # Pluie -> P10 Pluie faible
+        'p14bis': 6,    # Averses -> P9 Averses
+        'p15': 8,       # Pluie forte -> P11 FORTES PLUIES
+        
+        # Orages & Grêle
+        'p16': 10,      # Averses orageuses -> Orages
+        'p16bis': 10,   # Averses orageuses -> Orages
+        'p25': 11,      # Orage avec grêle -> Orages + Grêle
+        'p25bis': 11,   # Orage avec grêle -> Orages + Grêle
+        'p26': 10,      # Risque d'orages -> Orages
+        'p27': 10,      # Risque d'orages -> Orages
+        'p28': 10,      # Orages violents -> Orages
+        'p29': 10,      # Orages -> Orages
+        'p30': 10,      # Orages -> Orages
+        
+        # Neige
+        'p18': 9, 'p19': 9, 'p20': 9, 'p21': 9, 'p22': 9, 'p23': 9
     }
     
     if icon_prefix in mapping:
@@ -241,94 +276,93 @@ def fetch_city_forecast(token, lat, lon):
         print(f"Error fetching forecast for lat={lat}, lon={lon}: {e}")
         return None
 
-def fetch_openmeteo_gusts(lat, lon, start_tomorrow=False):
-    """Fetch wind_gusts_10m hourly from Open-Meteo (free, no auth, 16-day forecast).
-    Returns a list of 192 floats (km/h) aligned to the same hourly grid as build_openmeteo_mock.
-    Falls back to None on any error so the caller can keep the MF value.
-    """
-    import time
-    now = datetime.now()
-    start_dt = datetime(now.year, now.month, now.day) + timedelta(days=(1 if start_tomorrow else 0))
-    end_dt = start_dt + timedelta(hours=191)
-    start_str = start_dt.strftime("%Y-%m-%d")
-    end_str = end_dt.strftime("%Y-%m-%d")
+def fetch_openmeteo_gusts(lat, lon, start_tomorrow=False, days=8):
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
         f"&hourly=wind_gusts_10m"
         f"&wind_speed_unit=kmh"
         f"&timezone=Europe%2FParis"
-        f"&start_date={start_str}&end_date={end_str}"
+        f"&forecast_days={days}"
     )
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode('utf-8'))
         gusts = data.get('hourly', {}).get('wind_gusts_10m', [])
-        # Pad or truncate to exactly 192 entries
-        if len(gusts) >= 192:
-            return [float(v or 0) for v in gusts[:192]]
-        return [float(v or 0) for v in gusts] + [0.0] * (192 - len(gusts))
+        target_len = days * 24
+        if len(gusts) >= target_len:
+            return [float(v or 0) for v in gusts[:target_len]]
+        return [float(v or 0) for v in gusts] + [0.0] * (target_len - len(gusts))
     except Exception as e:
         print(f"  [open-meteo gusts] fetch failed for lat={lat},lon={lon}: {e}")
         return None
 
 
-def fetch_all_openmeteo_gusts(cities_list, start_tomorrow=False):
-    """Fetch wind_gusts_10m hourly for all cities in a single batch request to Open-Meteo."""
+def fetch_all_openmeteo_gusts(cities_list, start_tomorrow=False, days=8, start_offset=None):
+    # ponytail: start_offset controls day shift (e.g. 2 for Tuesday); defaults to start_tomorrow
+    if start_offset is None:
+        start_offset = 1 if start_tomorrow else 0
     if not cities_list:
         return {}
-    
-    import json
-    import urllib.request
-    from datetime import datetime, timedelta
-    
-    now = datetime.now()
-    start_dt = datetime(now.year, now.month, now.day) + timedelta(days=(1 if start_tomorrow else 0))
-    end_dt = start_dt + timedelta(hours=191)
-    start_str = start_dt.strftime("%Y-%m-%d")
-    end_str = end_dt.strftime("%Y-%m-%d")
     
     lats = ",".join(str(c['lat']) for c in cities_list)
     lons = ",".join(str(c['lon']) for c in cities_list)
     
+    total_days = min(days + start_offset, 16)
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lats}&longitude={lons}"
-        f"&hourly=wind_gusts_10m"
+        f"&hourly=windspeed_10m,wind_gusts_10m,winddirection_10m"
         f"&wind_speed_unit=kmh"
         f"&timezone=Europe%2FParis"
-        f"&start_date={start_str}&end_date={end_str}"
+        f"&forecast_days={total_days}"
     )
+    print("DEBUG URL (Batch Wind):", url)
     
     gusts_map = {}
-    print(f"  [open-meteo gusts] Batch fetching gusts for {len(cities_list)} locations...")
+    print(f"  [open-meteo wind] Batch fetching wind data (speed, gusts, direction) for {len(cities_list)} locations...")
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=20) as resp:
             data = json.loads(resp.read().decode('utf-8'))
         
         results = data if isinstance(data, list) else [data]
+        target_len = days * 24
+        start_h = start_offset * 24
+        end_h = start_h + target_len
         for idx, r in enumerate(results):
             city = cities_list[idx]
-            gusts = r.get('hourly', {}).get('wind_gusts_10m', [])
+            hourly_res = r.get('hourly', {})
+            gusts = hourly_res.get('wind_gusts_10m', [])
+            speeds = hourly_res.get('windspeed_10m', [])
+            dirs = hourly_res.get('winddirection_10m', [])
             
-            if len(gusts) >= 192:
-                final_gusts = [float(v or 0) for v in gusts[:192]]
-            else:
-                final_gusts = [float(v or 0) for v in gusts] + [0.0] * (192 - len(gusts))
+            def pad_list(arr, def_val=0.0):
+                if len(arr) >= target_len:
+                    return [float(v if v is not None else def_val) for v in arr[:target_len]]
+                return [float(v if v is not None else def_val) for v in arr] + [def_val] * (target_len - len(arr))
+
+            final_gusts = pad_list(gusts[start_h:end_h] if len(gusts) >= end_h else gusts[start_h:], 0.0)
+            final_speeds = pad_list(speeds[start_h:end_h] if len(speeds) >= end_h else speeds[start_h:], 0.0)
+            final_dirs = pad_list(dirs[start_h:end_h] if len(dirs) >= end_h else dirs[start_h:], 180.0)
             
             key = f"{round(float(city['lat']), 2)}_{round(float(city['lon']), 2)}"
-            gusts_map[key] = final_gusts
-        print(f"  [open-meteo gusts] Batch fetch successful for {len(results)} locations.")
+            gusts_map[key] = {
+                'gusts': final_gusts,
+                'speeds': final_speeds,
+                'dirs': final_dirs
+            }
+        print(f"  [open-meteo wind] Batch fetch successful for {len(results)} locations.")
             
     except Exception as e:
-        print(f"  [open-meteo gusts] Batch fetch failed: {e}")
+        print(f"  [open-meteo wind] Batch fetch failed: {e}")
         
     return gusts_map
 
 
-def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None):
+
+def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None, days=8, start_offset=None):
     if not mf_data or 'properties' not in mf_data:
         return None
         
@@ -336,10 +370,13 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None):
     forecasts = prop.get('forecast', [])
     daily_forecasts = prop.get('daily_forecast', [])
     
+    # ponytail: start_offset takes precedence over boolean start_tomorrow
+    if start_offset is None:
+        start_offset = 1 if start_tomorrow else 0
+        
     now = datetime.now()
     start_of_today = datetime(now.year, now.month, now.day, 0, 0, 0)
-    if start_tomorrow:
-        start_of_today += timedelta(days=1)
+    start_of_today += timedelta(days=start_offset)
     
     hourly_times = []
     hourly_temp = []
@@ -349,33 +386,44 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None):
     hourly_precip = []
     hourly_clouds = []
     
-    for h in range(192):
+    for h in range(days * 24):
         target_dt = start_of_today + timedelta(hours=h)
         target_iso = target_dt.strftime("%Y-%m-%dT%H:00")
         hourly_times.append(target_iso)
         
         match_item = None
-        min_diff = timedelta(hours=2)
+        min_diff = timedelta(hours=3, minutes=30)
         for item in forecasts:
-            item_time_str = item['time'].replace('Z', '')
             try:
-                item_time_str = item_time_str.split('.')[0]
-                item_dt = datetime.fromisoformat(item_time_str)
+                item_time_str = item['time'].replace('Z', '').split('.')[0]
+                item_local_str = utc_to_paris_local(item_time_str)
+                item_dt = datetime.fromisoformat(item_local_str)
                 diff = abs(target_dt - item_dt)
-                if diff < min_diff:
+                if diff <= min_diff:
                     min_diff = diff
                     match_item = item
             except Exception:
                 pass
                 
         if match_item:
-            hourly_temp.append(match_item.get('T', 15))
-            hourly_wc.append(map_mf_icon(match_item.get('weather_icon', 'p1j')))
-            hourly_ws.append(match_item.get('wind_speed', 0))
-            # ponytail: gust overridden by Open-Meteo below if available
-            hourly_wg.append(match_item.get('wind_speed_gust', 0))
-            hourly_precip.append(match_item.get('rain_1h', 0) or 0)
-            hourly_clouds.append(match_item.get('total_cloud_cover', 0) or 0)
+            t_val = match_item.get('T')
+            hourly_temp.append(t_val if t_val is not None else 15.0)
+            raw_icon = match_item.get('weather_icon') or 'p1j'
+            wc = map_mf_icon(raw_icon)
+            hour_of_day = h % 24
+            # Dissipation des brouillards en cours de journée et sous douceur (comme sur meteofrance.com) :
+            # Les brouillards matinaux se dissipent en fin de matinée et ne persistent pas sous température >= 15°C
+            if wc == 12 and (hour_of_day >= 11 or (t_val is not None and t_val >= 15.0)):
+                wc = 1 # P2 Éclaircies
+            hourly_wc.append(wc)
+            ws_val = match_item.get('wind_speed')
+            hourly_ws.append(ws_val if ws_val is not None else 0)
+            wg_val = match_item.get('wind_speed_gust')
+            hourly_wg.append(wg_val if wg_val is not None else 0)
+            pr_val = match_item.get('rain_1h')
+            hourly_precip.append(pr_val if pr_val is not None else 0)
+            cl_val = match_item.get('total_cloud_cover')
+            hourly_clouds.append(cl_val if cl_val is not None else 0)
         else:
             day_idx = h // 24
             hour_of_day = h % 24
@@ -385,9 +433,13 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None):
             if lookup_idx < len(daily_forecasts):
                 daily_item = daily_forecasts[lookup_idx]
                 
-            t_min = daily_item.get('T_min', 12) if daily_item else 12
-            t_max = daily_item.get('T_max', 22) if daily_item else 22
-            daily_icon = daily_item.get('daily_weather_icon', 'p1j') if daily_item else 'p1j'
+            t_min = daily_item.get('T_min') if daily_item else None
+            if t_min is None:
+                t_min = 12.0
+            t_max = daily_item.get('T_max') if daily_item else None
+            if t_max is None:
+                t_max = 22.0
+            daily_icon = (daily_item.get('daily_weather_icon') or 'p1j') if daily_item else 'p1j'
             
             if hour_of_day <= 6:
                 est_temp = t_min
@@ -398,8 +450,11 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None):
                 pct = (hour_of_day - 15) / 9
                 est_temp = t_max - (t_max - t_min) * pct
                 
-            hourly_temp.append(round(est_temp, 1))
-            hourly_wc.append(map_mf_icon(daily_icon))
+            hourly_temp.append(round(est_temp, 1) if est_temp is not None else 15.0)
+            wc_daily = map_mf_icon(daily_icon)
+            if wc_daily == 12 and (hour_of_day >= 11 or (est_temp is not None and est_temp >= 15.0)):
+                wc_daily = 1 # P2 Éclaircies
+            hourly_wc.append(wc_daily)
             hourly_ws.append(5)
             hourly_wg.append(0)  # will be replaced by Open-Meteo below
             hourly_precip.append(0)
@@ -411,7 +466,7 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None):
     daily_sunrise = []
     daily_sunset = []
     
-    for d in range(8):
+    for d in range(days):
         target_date = start_of_today + timedelta(days=d)
         date_str = target_date.strftime("%Y-%m-%d")
         daily_times.append(date_str)
@@ -424,28 +479,44 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None):
                 break
                 
         if match_daily:
-            daily_min_temp.append(match_daily.get('T_min', 10))
-            daily_max_temp.append(match_daily.get('T_max', 20))
+            t_min_val = match_daily.get('T_min')
+            t_max_val = match_daily.get('T_max')
             
+            if t_min_val is not None:
+                daily_min_temp.append(t_min_val)
+            else:
+                day_slice = [t for t in hourly_temp[d*24 : (d+1)*24] if t is not None]
+                daily_min_temp.append(min(day_slice) if day_slice else 10)
+                
+            if t_max_val is not None:
+                daily_max_temp.append(t_max_val)
+            else:
+                day_slice = [t for t in hourly_temp[d*24 : (d+1)*24] if t is not None]
+                daily_max_temp.append(max(day_slice) if day_slice else 20)
+                
             sunrise_str = match_daily.get('sunrise_time')
-            if sunrise_str:
+            if sunrise_str and isinstance(sunrise_str, str):
                 daily_sunrise.append(utc_to_paris_local(sunrise_str.replace('Z', '')))
             else:
                 daily_sunrise.append(f"{date_str}T06:00:00")
                 
             sunset_str = match_daily.get('sunset_time')
-            if sunset_str:
+            if sunset_str and isinstance(sunset_str, str):
                 daily_sunset.append(utc_to_paris_local(sunset_str.replace('Z', '')))
             else:
                 daily_sunset.append(f"{date_str}T21:00:00")
         else:
-            day_slice = hourly_temp[d*24 : (d+1)*24]
+            day_slice = [t for t in hourly_temp[d*24 : (d+1)*24] if t is not None]
             daily_min_temp.append(min(day_slice) if day_slice else 10)
             daily_max_temp.append(max(day_slice) if day_slice else 20)
             daily_sunrise.append(f"{date_str}T06:00:00")
             daily_sunset.append(f"{date_str}T21:00:00")
             
     coords = mf_data.get("geometry", {}).get("coordinates", [2.35, 48.85])
+    om_speeds = om_gusts.get('speeds') if isinstance(om_gusts, dict) else None
+    om_dirs = om_gusts.get('dirs') if isinstance(om_gusts, dict) else None
+    om_gusts_list = om_gusts.get('gusts') if isinstance(om_gusts, dict) else (om_gusts if isinstance(om_gusts, list) else None)
+
     mock_obj = {
         "latitude": coords[1],
         "longitude": coords[0],
@@ -454,16 +525,16 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None):
             "time": hourly_times,
             "temperature_2m": hourly_temp,
             "weathercode": hourly_wc,
-            "windspeed_10m": hourly_ws,
-            "wind_gusts_10m": om_gusts if om_gusts else hourly_wg,
+            "windspeed_10m": om_speeds if om_speeds else hourly_ws,
+            "wind_gusts_10m": om_gusts_list if om_gusts_list else hourly_wg,
             "precipitation": hourly_precip,
-            "relativehumidity_2m": [50] * 192,
-            "pressure_msl": [1013] * 192,
-            "winddirection_10m": [180] * 192,
+            "relativehumidity_2m": [50] * (days * 24),
+            "pressure_msl": [1013] * (days * 24),
+            "winddirection_10m": om_dirs if om_dirs else [180] * (days * 24),
             "cloud_cover": hourly_clouds,
-            "cloud_cover_low": [0] * 192,
-            "cloud_cover_mid": [0] * 192,
-            "cloud_cover_high": [0] * 192
+            "cloud_cover_low": [0] * (days * 24),
+            "cloud_cover_mid": [0] * (days * 24),
+            "cloud_cover_high": [0] * (days * 24)
         },
         "daily": {
             "time": daily_times,
@@ -478,10 +549,47 @@ def build_openmeteo_mock(mf_data, start_tomorrow=False, om_gusts=None):
 save_done_event = threading.Event()
 saved_image_data = {}
 
+def capture_map_playwright(target_url, orientation="landscape", timeout=45):
+    """Capture #capture-area via Playwright (pixels réels, pas de re-fetch CORS)."""
+    from playwright.sync_api import sync_playwright
+    from PIL import Image
+    import io
+    w, h = (1080, 1920) if orientation == "portrait" else ((1080, 1080) if orientation == "square" else (1920, 1080))
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-gpu'])
+        ctx = browser.new_context(viewport={'width': w, 'height': h}, device_scale_factor=1)
+        # Injecter la session auth avant le chargement de la page (bypass login)
+        ctx.add_init_script("sessionStorage.setItem('mcp_auth', '1');")
+        page = ctx.new_page()
+        page.goto(target_url, wait_until='networkidle', timeout=timeout * 1000)
+        # Attendre que les tuiles Leaflet soient chargées (classe leaflet-tile-loaded)
+        try:
+            page.wait_for_function(
+                "() => { const t = document.querySelectorAll('.leaflet-tile-loaded'); return t.length > 0 && Array.from(t).every(i => i.complete && i.naturalWidth > 0); }",
+                timeout=20000
+            )
+        except Exception:
+            pass  # timeout = on capture quand même ce qui est rendu
+        page.wait_for_timeout(1500)  # délai peinture GPU
+        el = page.query_selector('#capture-area')
+        if not el:
+            browser.close()
+            return None
+        png = el.screenshot(type='png')
+        browser.close()
+    img = Image.open(io.BytesIO(png))
+    if img.mode == 'RGBA':
+        bg = Image.new('RGB', img.size, (255, 255, 255))
+        bg.paste(img, mask=img.split()[3])
+        img = bg
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=95)
+    return buf.getvalue()
+
 class DualHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
-        
+
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -489,30 +597,33 @@ class DualHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
+    def do_GET(self):
+        super().do_GET()
+
     def do_POST(self):
         global saved_image_data
         if self.path == '/save_map':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
-            
+
             try:
                 payload = json.loads(post_data.decode('utf-8'))
                 img_b64 = payload['image'].split(',')[1]
                 day = payload['day']
                 period = payload['period']
-                
+
                 saved_image_data = {
                     'data': base64.b64decode(img_b64),
                     'day': day,
                     'period': period
                 }
-                
+
                 self.send_response(200)
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
                 self.wfile.write(b'{"status":"ok"}')
-                
+
                 save_done_event.set()
             except Exception as e:
                 print("Error receiving image on server:", e)
@@ -524,9 +635,9 @@ class DualHandler(http.server.SimpleHTTPRequestHandler):
 
 def run_local_server():
     os.chdir(PROJECT_DIR)
-    socketserver.TCPServer.allow_reuse_address = True
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
     try:
-        with socketserver.TCPServer(("127.0.0.1", 8001), DualHandler) as httpd:
+        with socketserver.ThreadingTCPServer(("127.0.0.1", 8001), DualHandler) as httpd:
             httpd.serve_forever()
     except Exception as e:
         pass
@@ -541,29 +652,33 @@ def main():
     now = datetime.now()
     default_start_tomorrow = True
     parser.add_argument("--start-tomorrow", action="store_true", default=default_start_tomorrow, help="Commencer les prévisions à partir de demain au lieu d'aujourd'hui")
+    parser.add_argument("--day-offset", type=int, default=None, help="Décalage du jour de départ (ex: 2 pour mardi)")
     parser.add_argument("--temp-highlight", action="store_true", help="Mise en avant min/max des températures (bleu min, rouge max, noir pour le reste)")
     parser.add_argument("--patrick", action="store_true", help="Générer les cartes spécifiques pour le Bulletin Patrick")
+    parser.add_argument("--json-only", action="store_true", help="Générer uniquement les fichiers JSON et CSV, sans captures d'images")
     args = parser.parse_args()
 
     zone_key = args.zone
-    if zone_key == "grandest":
-        zone_key = "grand-est"
     days_to_capture = args.days
-    start_tomorrow = args.start_tomorrow
+    start_offset = args.day_offset if args.day_offset is not None else (1 if args.start_tomorrow else 0)
+    start_tomorrow = (start_offset > 0)
     orientation = args.orientation
     temp_highlight = args.temp_highlight
     patrick_mode = args.patrick
     if patrick_mode:
         temp_highlight = True
     
-    # By default: 8 days for france_pictos (national), 3 days (J0, J1, J2) for regional maps
+    json_only = args.json_only
+    # By default: 8 days for france_pictos (national) or offset, 3 days (J0, J1, J2) for regional maps
     if days_to_capture is None:
-        if patrick_mode:
-            days_to_capture = 5
+        if json_only:
+            days_to_capture = 16
+        elif patrick_mode or args.day_offset is not None:
+            days_to_capture = 8
         else:
-            days_to_capture = 8 if zone_key == "france_pictos" else 3
-    elif patrick_mode:
-        days_to_capture = max(days_to_capture, 5)
+            days_to_capture = 8 if zone_key in ["france_pictos", "france"] else 3
+    elif patrick_mode or args.day_offset is not None:
+        days_to_capture = max(days_to_capture, 8)
 
     json_filename = f"meteofrance_data_{zone_key}.json" if zone_key != "france_pictos" else "meteofrance_data.json"
     JSON_OUT_PATH = os.path.join(PROJECT_DIR, json_filename)
@@ -590,10 +705,14 @@ def main():
     # Ephemeris city: national = Paris, regional = chef-lieu of the region
     ZONE_EPHEMERIS_CITY = {
         "france_pictos": {"name": "Paris",      "lat": 48.8566, "lon":  2.3522},
+        "cnews":         {"name": "Paris",      "lat": 48.8566, "lon":  2.3522},
+        "france":        {"name": "Paris",      "lat": 48.8566, "lon":  2.3522},
         "hdf":           {"name": "Lille",       "lat": 50.6292, "lon":  3.0573},
         "normandie":     {"name": "Rouen",       "lat": 49.4432, "lon":  1.0993},
         "idf":           {"name": "Paris",       "lat": 48.8566, "lon":  2.3522},
+        "ile-de-france": {"name": "Paris",      "lat": 48.8566, "lon":  2.3522},
         "grandest":      {"name": "Strasbourg",  "lat": 48.5734, "lon":  7.7521},
+        "grand-est":     {"name": "Strasbourg",  "lat": 48.5734, "lon":  7.7521},
         "ara":           {"name": "Lyon",        "lat": 45.7640, "lon":  4.8357},
         "naq":           {"name": "Bordeaux",    "lat": 44.8378, "lon": -0.5792},
         "occitanie":     {"name": "Toulouse",    "lat": 43.6047, "lon":  1.4442},
@@ -601,17 +720,17 @@ def main():
         "bfc":           {"name": "Dijon",       "lat": 47.3220, "lon":  5.0415},
         "bretagne":      {"name": "Rennes",      "lat": 48.1173, "lon": -1.6778},
         "pdl":           {"name": "Nantes",      "lat": 47.2184, "lon": -1.5536},
-        "cvl":           {"name": "Orléans",     "lat": 47.9029, "lon":  1.9092},
+        "cvl":           {"name": "Blois",       "lat": 47.5800, "lon":  1.3300},
         "corse":         {"name": "Ajaccio",     "lat": 41.9192, "lon":  8.7386},
     }
-    eph_city = ZONE_EPHEMERIS_CITY.get(zone_key, {"name": "Paris", "lat": 48.8566, "lon": 2.3522})
+    eph_city = ZONE_EPHEMERIS_CITY.get(zone_key, cities_list[0] if cities_list else {"name": "Paris", "lat": 48.8566, "lon": 2.3522})
     eph_in_list = any(abs(c.get('lat', 0) - eph_city['lat']) < 0.05 and abs(c.get('lon', 0) - eph_city['lon']) < 0.05 for c in cities_list)
 
     # Pre-fetch all gusts in a single batch request
     all_cities_for_gusts = list(cities_list)
     if not eph_in_list:
         all_cities_for_gusts.append(eph_city)
-    all_gusts = fetch_all_openmeteo_gusts(all_cities_for_gusts, start_tomorrow=start_tomorrow)
+    all_gusts = fetch_all_openmeteo_gusts(all_cities_for_gusts, start_tomorrow=start_tomorrow, days=days_to_capture, start_offset=start_offset)
 
     # Fetch forecasts for all zone cities
     print(f"Fetching Météo-France forecasts for {len(cities_list)} cities...")
@@ -626,7 +745,7 @@ def main():
         om_gusts = all_gusts.get(key)
         
         if mf_json:
-            mock = build_openmeteo_mock(mf_json, start_tomorrow=start_tomorrow, om_gusts=om_gusts)
+            mock = build_openmeteo_mock(mf_json, start_tomorrow=start_tomorrow, om_gusts=om_gusts, days=days_to_capture, start_offset=start_offset)
             if mock:
                 weather_data_list.append(mock)
             else:
@@ -643,7 +762,7 @@ def main():
         key = f"{round(float(eph_city['lat']), 2)}_{round(float(eph_city['lon']), 2)}"
         eph_gusts = all_gusts.get(key)
         
-        eph_mock = build_openmeteo_mock(eph_mf, start_tomorrow=start_tomorrow, om_gusts=eph_gusts) if eph_mf else None
+        eph_mock = build_openmeteo_mock(eph_mf, start_tomorrow=start_tomorrow, om_gusts=eph_gusts, days=days_to_capture) if eph_mf else None
         if eph_mock:
             eph_mock['ephemeris_city'] = eph_city['name']
             weather_data_list.insert(0, eph_mock)
@@ -659,6 +778,26 @@ def main():
     with open(JSON_OUT_PATH, 'w', encoding='utf-8') as f:
         json.dump(weather_data_list, f, indent=2)
     print(f"Successfully generated weather data file: {JSON_OUT_PATH}")
+
+    # Dual-write alias file if applicable (e.g. idf <-> ile-de-france, grandest <-> grand-est)
+    ZONE_ALIASES = {
+        'idf': 'ile-de-france',
+        'ile-de-france': 'idf',
+        'grandest': 'grand-est',
+        'grand-est': 'grandest',
+    }
+    if zone_key in ZONE_ALIASES:
+        alt_key = ZONE_ALIASES[zone_key]
+        alt_path = os.path.join(PROJECT_DIR, f"meteofrance_data_{alt_key}.json")
+        try:
+            shutil.copy(JSON_OUT_PATH, alt_path)
+            print(f"Dual-wrote alias JSON: {alt_path}")
+        except Exception as e:
+            print(f"Failed to dual-write alias JSON {alt_path}: {e}")
+
+    if json_only:
+        print("Mode JSON-only actif. Fin de l'exécution sans capture d'images.")
+        return
 
     # Generate daily CSV
     daily_csv_path = os.path.join(PROJECT_DIR, f"meteofrance_daily_forecast_{zone_key}.csv" if zone_key != "france_pictos" else "meteofrance_daily_forecast.csv")
@@ -751,20 +890,20 @@ def main():
     time.sleep(2.0)
 
     # 3. Render maps
-    if patrick_mode:
+    if patrick_mode or args.day_offset is not None:
         renders = [
             (0, 'morning', 'matin', 'weather_temp'),
             (0, 'afternoon', 'apresmidi', 'weather_temp'),
             (0, 'day', 'precip', 'precip'),
-            (0, 'day', 'gusts', 'gusts'),
+            (0, 'day', 'gusts', 'gusts')
         ]
-        # ponytail: etend le rendu patrick aux jours demandes (ex: J1 a J7 avec --days 8)
         for d in range(1, min(days_to_capture, 7)):
             renders.append((d, 'afternoon', 'apresmidi', 'weather_temp'))
     else:
         periods = {
             'morning': 'matin',
-            'afternoon': 'apresmidi'
+            'afternoon': 'apresmidi',
+            'evening': 'soiree'
         }
         renders = []
         for day in range(days_to_capture):
@@ -775,195 +914,52 @@ def main():
     current_render = 0
     
     print("\nStarting automated map rendering...")
-    use_playwright_turbo = False
-    try:
-        from playwright.sync_api import sync_playwright
-        use_playwright_turbo = True
-    except ImportError:
-        pass
+    for day, period_key, period_name, param in renders:
+        actual_day = day + 1 if (start_offset > 0) else day
+        current_render += 1
+        print(f"[{current_render}/{total_renders}] Rendering J{actual_day} - {period_name.upper()} ({param})...")
 
-    if use_playwright_turbo:
-        try:
-            print("⚡ [Mode Turbo] Démarrage session Playwright réutilisable (zéro cold-start)...")
-            with sync_playwright() as p:
-                w_val = 1080 if orientation in ["portrait", "square"] else 1920
-                h_val = 1920 if orientation == "portrait" else 1080
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--disable-gpu",
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--mute-audio",
-                        "--hide-scrollbars",
-                        "--disable-background-networking"
-                    ]
-                )
-                context = browser.new_context(viewport={"width": w_val, "height": h_val})
-                page = context.new_page()
-
-                for day, period_key, period_name, param in renders:
-                    actual_day = day + 1 if start_tomorrow else day
-                    current_render += 1
-                    print(f"[{current_render}/{total_renders}] Rendering J{actual_day} - {period_name.upper()} ({param})...")
-                    
-                    target_url = f"http://127.0.0.1:8001/index.html?headless=true&use_mf=true&day={day}&period={period_key}&zone={zone_key}&param={param}&auto_save=true"
-                    if temp_highlight:
-                        target_url += "&highlight=true"
-                    if orientation != 'landscape':
-                        target_url += f"&orientation={orientation}"
-                        
-                    save_done_event.clear()
-                    try:
-                        page.goto(target_url, wait_until="commit", timeout=15000)
-                    except Exception as ge:
-                        pass
-                    success = save_done_event.wait(timeout=30)
-                    
-                    if success and saved_image_data:
-                        suffix = f"_{orientation}" if orientation != "landscape" else ""
-                        filename = f"carte_{zone_key}_J{actual_day}_{period_name}{suffix}.jpg" if zone_key != "france_pictos" else f"carte_J{actual_day}_{period_name}{suffix}.jpg"
-                        filepath = os.path.join(DEST_DIR, filename)
-                        with open(filepath, 'wb') as f_img:
-                            f_img.write(saved_image_data['data'])
-                        print(f"   -> Saved: {filepath}")
-                    else:
-                        print(f"   -> Error: Timeout waiting for render of J{actual_day} {period_name}.")
-
-                # Ephemeride
-                print(f"\n[{total_renders+1}/{total_renders+1}] Rendering J0 - EPHEMERIDE...")
-                target_url = f"http://127.0.0.1:8001/index.html?headless=true&use_mf=true&day=0&period=ephemeride&zone={zone_key}&auto_save=true"
-                if orientation != 'landscape':
-                    target_url += f"&orientation={orientation}"
-                save_done_event.clear()
-                try:
-                    page.goto(target_url, wait_until="commit", timeout=15000)
-                except Exception as ge:
-                    pass
-                success = save_done_event.wait(timeout=30)
-                if success and saved_image_data:
-                    suffix = f"_{orientation}" if orientation != "landscape" else ""
-                    filename = f"carte_{zone_key}_ephemeride{suffix}.jpg" if zone_key != "france_pictos" else f"carte_ephemeride{suffix}.jpg"
-                    filepath = os.path.join(DEST_DIR, filename)
-                    with open(filepath, 'wb') as f_img:
-                        f_img.write(saved_image_data['data'])
-                    print(f"   -> Saved: {filepath}")
-                else:
-                    print("   -> Error: Timeout waiting for render of ephemeride.")
-                browser.close()
-        except Exception as e:
-            print(f"Playwright pool exception: {e}, falling back to standard Chrome launcher...")
-            use_playwright_turbo = False
-
-    if not use_playwright_turbo:
-        for day, period_key, period_name, param in renders:
-            actual_day = day + 1 if start_tomorrow else day
-            current_render += 1
-            print(f"[{current_render}/{total_renders}] Rendering J{actual_day} - {period_name.upper()} ({param})...")
-            
-            target_url = f"http://127.0.0.1:8001/index.html?headless=true&use_mf=true&day={day}&period={period_key}&zone={zone_key}&param={param}&auto_save=true"
-            if temp_highlight:
-                target_url += "&highlight=true"
-            if orientation != 'landscape':
-                target_url += f"&orientation={orientation}"
-                
-            save_done_event.clear()
-            
-            w_size = "1080,1920" if orientation == "portrait" else ("1080,1080" if orientation == "square" else "1920,1080")
-            args = [
-                CHROME_PATH,
-                "--headless=new",
-                "--disable-gpu",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                f"--window-size={w_size}",
-                "--force-device-scale-factor=1",
-                "--mute-audio",
-                "--hide-scrollbars",
-                "--enable-logging",
-                "--disable-background-networking",
-                "--disable-default-apps",
-                "--disable-sync",
-                "--no-first-run",
-                "--disable-extensions",
-                f"--user-data-dir={chrome_profile_dir}_{current_render}",
-                target_url
-            ]
-            
-            creationflags = 0x08000000 if os.name == 'nt' else 0
-            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creationflags)
-            
-            def log_chrome(p):
-                try:
-                    for line in p.stderr:
-                        print("  [Chrome Err]", line.decode('utf-8', errors='ignore').strip())
-                except:
-                    pass
-            threading.Thread(target=log_chrome, args=(proc,), daemon=True).start()
-            
-            success = save_done_event.wait(timeout=45)
-            proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                
-            if success and saved_image_data:
-                suffix = f"_{orientation}" if orientation != "landscape" else ""
-                filename = f"carte_{zone_key}_J{actual_day}_{period_name}{suffix}.jpg" if zone_key != "france_pictos" else f"carte_J{actual_day}_{period_name}{suffix}.jpg"
-                filepath = os.path.join(DEST_DIR, filename)
-                with open(filepath, 'wb') as f_img:
-                    f_img.write(saved_image_data['data'])
-                print(f"   -> Saved: {filepath}")
-            else:
-                print(f"   -> Error: Timeout waiting for render of J{actual_day} {period_name}.")
-                
-            time.sleep(0.5)
-
-        # 4. Render ephemeris card (J0) at the end of the bulletin
-        print(f"\n[{total_renders+1}/{total_renders+1}] Rendering J0 - EPHEMERIDE...")
-        target_url = f"http://127.0.0.1:8001/index.html?headless=true&use_mf=true&day=0&period=ephemeride&zone={zone_key}&auto_save=true"
+        target_url = f"http://127.0.0.1:8001/index.html?headless=true&use_mf=true&day={day}&period={period_key}&zone={zone_key}&param={param}&auto_save=true"
+        if temp_highlight:
+            target_url += "&highlight=true"
         if orientation != 'landscape':
             target_url += f"&orientation={orientation}"
-        
-        save_done_event.clear()
-        
-        w_size = "1080,1920" if orientation == "portrait" else ("1080,1080" if orientation == "square" else "1920,1080")
-        args = [
-            CHROME_PATH,
-            "--headless=new",
-            "--disable-gpu",
-            f"--window-size={w_size}",
-            "--force-device-scale-factor=1",
-            "--mute-audio",
-            "--hide-scrollbars",
-            "--disable-background-networking",
-            "--disable-default-apps",
-            "--disable-sync",
-            "--no-first-run",
-            "--disable-extensions",
-            f"--user-data-dir={chrome_profile_dir}_eph",
-            target_url
-        ]
-        
-        creationflags = 0x08000000 if os.name == 'nt' else 0
-        proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=creationflags)
-        success = save_done_event.wait(timeout=45)
-        proc.terminate()
-        try:
-            proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            
-        if success and saved_image_data:
+
+        img_bytes = capture_map_playwright(target_url, orientation, timeout=45)
+        if img_bytes:
             suffix = f"_{orientation}" if orientation != "landscape" else ""
-            filename = f"carte_{zone_key}_ephemeride{suffix}.jpg" if zone_key != "france_pictos" else f"carte_ephemeride{suffix}.jpg"
+            if zone_key != "france_pictos":
+                filename = f"carte_{zone_key}_J{actual_day}_{period_name}{suffix}.jpg"
+            else:
+                filename = f"carte_J{actual_day}_{period_name}{suffix}.jpg"
             filepath = os.path.join(DEST_DIR, filename)
             with open(filepath, 'wb') as f_img:
-                f_img.write(saved_image_data['data'])
+                f_img.write(img_bytes)
             print(f"   -> Saved: {filepath}")
+            if actual_day == 1:
+                legacy_file = f"carte_{period_name}{suffix}.jpg" if zone_key == "france_pictos" else f"carte_{zone_key}_{period_name}{suffix}.jpg"
+                legacy_path = os.path.join(DEST_DIR, legacy_file)
+                with open(legacy_path, 'wb') as f_img:
+                    f_img.write(img_bytes)
         else:
-            print("   -> Error: Timeout waiting for render of ephemeride.")
+            print(f"   -> Error: Playwright capture failed for J{actual_day} {period_name}.")
+
+        time.sleep(0.3)
+
+    # 4. Render ephemeris card (J0)
+    print(f"\n[{total_renders+1}/{total_renders+1}] Rendering J0 - EPHEMERIDE...")
+    eph_url = f"http://127.0.0.1:8001/index.html?headless=true&use_mf=true&day=0&period=ephemeride&zone={zone_key}&auto_save=true"
+    if orientation != 'landscape':
+        eph_url += f"&orientation={orientation}"
+    img_bytes = capture_map_playwright(eph_url, orientation, timeout=45)
+    if img_bytes:
+        suffix = f"_{orientation}" if orientation != "landscape" else ""
+        eph_file = os.path.join(DEST_DIR, f"carte_{zone_key}_ephemeride{suffix}.jpg")
+        with open(eph_file, 'wb') as f_img:
+            f_img.write(img_bytes)
+        print(f"   -> Saved: {eph_file}")
+    else:
+        print("   -> Error: Playwright capture failed for ephemeride.")
 
     # 5. Capture vigilance map at the end
     print(f"\nRendering vigilance map for {zone_key}...")
@@ -997,14 +993,12 @@ def main():
     except Exception as e:
         print(f"   -> Error calling capture_and_compose_forets: {e}")
 
-    # Cleanup unique chrome profiles
-    import glob
-    for d in glob.glob(f"{chrome_profile_dir}*"):
-        if os.path.exists(d):
-            try:
-                shutil.rmtree(d)
-            except Exception:
-                pass
+    # Cleanup unique chrome profile
+    if os.path.exists(chrome_profile_dir):
+        try:
+            shutil.rmtree(chrome_profile_dir)
+        except Exception:
+            pass
 
     print("\nSuccess! All weather map images, ephemeris card, and CSV reports have been generated.")
     print(f"You can find them in: {DEST_DIR}")
