@@ -1,11 +1,13 @@
-﻿/**
+/**
  * Service d'accès à l'API Climatologique officielle Météo-France (DPClim)
  * Permet de récupérer les archives quotidiennes (1950 - Hier) pour toutes les stations françaises.
  */
 
 import { meteoAuth } from './meteoFranceAuth';
 
-const BASE_CLIM_URL = typeof window !== 'undefined' ? '/api-meteo-clim' : 'https://public-api.meteofrance.fr/public/DPClim/v1';
+// ponytail: Météo-France DPClim fournit nativement les en-têtes CORS (Access-Control-Allow-Origin: *).
+// Appel direct vers l'API officielle sans passer par un proxy Vercel sujet aux 502 ROUTER_EXTERNAL_TARGET_ERROR.
+const BASE_CLIM_URL = 'https://public-api.meteofrance.fr/public/DPClim/v1';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -161,6 +163,9 @@ export const meteoFranceClimService = {
             throw new Error('Paramètres manquants (stationId, startDate, endDate requis)');
         }
 
+        const sidStr = String(stationId).trim();
+        const normStationId = sidStr.length === 5 ? `${sidStr}001` : sidStr;
+
         const yesterday = yesterdayLocalISODate();
         let safeEnd = endDate;
         if (safeEnd > yesterday) {
@@ -174,14 +179,14 @@ export const meteoFranceClimService = {
         if (ranges.length === 0) return [];
 
         if (ranges.length === 1) {
-            return this._fetchSingleStationHistory(stationId, ranges[0].start, ranges[0].end, onProgress);
+            return this._fetchSingleStationHistory(normStationId, ranges[0].start, ranges[0].end, onProgress);
         }
 
         onProgress(`Découpage en ${ranges.length} tranches annuelles DPClim...`);
         const chunks = await Promise.all(
             ranges.map(async (r, idx) => {
                 onProgress(`Commande DPClim (${idx + 1}/${ranges.length}) : ${r.start} à ${r.end}…`);
-                return this._fetchSingleStationHistory(stationId, r.start, r.end, onProgress);
+                return this._fetchSingleStationHistory(normStationId, r.start, r.end, onProgress);
             })
         );
 
@@ -203,6 +208,7 @@ export const meteoFranceClimService = {
         let cmdResp = await fetch(cmdUrl, {
             headers: {
                 'Authorization': 'Bearer ' + token,
+                'apikey': token,
                 'Accept': 'application/json'
             }
         });
@@ -395,6 +401,9 @@ export const meteoFranceClimService = {
             throw new Error('Paramètres manquants (stationId, startDate, endDate requis)');
         }
 
+        const sidStrHourly = String(stationId).trim();
+        const normStationId = sidStrHourly.length === 5 ? `${sidStrHourly}001` : sidStrHourly;
+
         const yesterday = yesterdayLocalISODate();
         let safeEnd = endDate;
         if (safeEnd > yesterday) safeEnd = yesterday;
@@ -404,14 +413,14 @@ export const meteoFranceClimService = {
         if (ranges.length === 0) return [];
 
         if (ranges.length === 1) {
-            return this._fetchSingleStationHourlyHistory(stationId, ranges[0].start, ranges[0].end, onProgress);
+            return this._fetchSingleStationHourlyHistory(normStationId, ranges[0].start, ranges[0].end, onProgress);
         }
 
         onProgress(`Découpage horaire en ${ranges.length} tranches annuelles DPClim...`);
         const chunks = await Promise.all(
             ranges.map(async (r, idx) => {
                 onProgress(`Commande horaire DPClim (${idx + 1}/${ranges.length}) : ${r.start} à ${r.end}…`);
-                return this._fetchSingleStationHourlyHistory(stationId, r.start, r.end, onProgress);
+                return this._fetchSingleStationHourlyHistory(normStationId, r.start, r.end, onProgress);
             })
         );
 

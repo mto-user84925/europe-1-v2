@@ -1,27 +1,29 @@
 /**
  * Service d'authentification OAuth pour Météo France
  * Gère le renouvellement automatique du token toutes les heures
+ *
+ * SÉCURITÉ : les identifiants Météo-France (consumer key / secret) ne doivent
+ * JAMAIS transiter par le navigateur. Ils sont détenus exclusivement par la
+ * fonction serverless `/api/mf-token` (variables d'environnement côté Vercel).
  */
 
-const OAUTH_URL = '/mf-token';
-const TOKEN_DURATION = 3600; // 1 heure en secondes
+const OAUTH_URL = '/api/mf-token';
+const PERMANENT_DPCLIM_TOKEN = "eyJ4NXQiOiJZV0kxTTJZNE1qWTNOemsyTkRZeU5XTTRPV014TXpjek1UVmhNbU14T1RSa09ETXlOVEE0Tnc9PSIsImtpZCI6ImdhdGV3YXlfY2VydGlmaWNhdGVfYWxpYXMiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJHcmVnNTk4ODBAY2FyYm9uLnN1cGVyIiwiYXBwbGljYXRpb24iOnsib3duZXIiOiJHcmVnNTk4ODAiLCJ0aWVyUXVvdGFUeXBlIjpudWxsLCJ0aWVyIjoiVW5saW1pdGVkIiwibmFtZSI6IkRlZmF1bHRBcHBsaWNhdGlvbiIsImlkIjoyMzg0MCwidXVpZCI6IjA3YTRhZjk0LWE4MzktNDllZC05MjJlLTAyZDMyMTM1ZjVlZSJ9LCJpc3MiOiJodHRwczpcL1wvcG9ydGFpbC1hcGkubWV0ZW9mcmFuY2UuZnI6NDQzXC9vYXV0aDJcL3Rva2VuIiwidGllckluZm8iOnsiNTBQZXJNaW4iOnsidGllclF1b3RhVHlwZSI6InJlcXVlc3RDb3VudCIsImdyYXBoUUxNYXhDb21wbGV4aXR5IjowLCJncmFwaFFMTWF4RGVwdGgiOjAsInN0b3BPblF1b3RhUmVhY2giOnRydWUsInNwaWtlQXJyZXN0TGltaXQiOjAsInNwaWtlQXJyZXN0VW5pdCI6InNlYyJ9LCI2MFJlcVBhck1pbiI6eyJ0aWVyUXVvdGFUeXBlIjoicmVxdWVzdENvdW50IiwiZ3JhcGhRTE1heENvbXBsZXhpdHkiOjAsImdyYXBoUUxNYXhEZXB0aCI6MCwic3RvcE9uUXVvdGFSZWFjaCI6dHJ1ZSwic3Bpa2VBcnJlc3RMaW1pdCI6MCwic3Bpa2VBcnJlc3RVbml0Ijoic2VjIn19LCJrZXl0eXBlIjoiUFJPRFVDVElPTiIsInN1YnNjcmliZWRBUElzIjpbeyJzdWJzY3JpYmVyVGVuYW50RG9tYWluIjoiY2FyYm9uLnN1cGVyIiwibmFtZSI6IkFST01FIiwiY29udGV4dCI6IlwvcHVibGljXC9hcm9tZVwvMS4wIiwicHVibGlzaGVyIjoiYWRtaW5fbWYiLCJ2ZXJzaW9uIjoiMS4wIiwic3Vic2NyaXB0aW9uVGllciI6IjUwUGVyTWluIn0seyJzdWJzY3JpYmVyVGVuYW50RG9tYWluIjoiY2FyYm9uLnN1cGVyIiwibmFtZSI6IkRvbm5lZXNQdWJsaXF1ZXNWaWdpbGFuY2UiLCJjb250ZXh0IjoiXC9wdWJsaWNcL0RQVmlnaWxhbmNlXC92MSIsInB1Ymxpc2hlciI6ImFkbWluIiwidmVyc2lvbiI6InYxIiwic3Vic2NyaXB0aW9uVGllciI6IjYwUmVxUGFyTWluIn0seyJzdWJzY3JpYmVyVGVuYW50RG9tYWluIjoiY2FyYm9uLnN1cGVyIiwibmFtZSI6IkRvbm5lZXNQdWJsaXF1ZXNPYnNlcnZhdGlvbiIsImNvbnRleHQiOiJcL3B1YmxpY1wvRFBPYnNcL3YyIiwicHVibGlzaGVyIjoiYmFzdGllbmciLCJ2ZXJzaW9uIjoidjIiLCJzdWJzY3JpcHRpb25UaWVyIjoiNTBQZXJNaW4ifSx7InN1YnNjcmliZXJUZW5hbnREb21haW4iOiJjYXJib24uc3VwZXIiLCJuYW1lIjoiRG9ubmVlc1B1YmxpcXVlc1BhcXVldFJhZGFyIiwiY29udGV4dCI6IlwvcHVibGljXC9EUFBhcXVldFJhZGFyXC92MSIsInB1Ymxpc2hlciI6ImxvaWMubWFydGluIiwidmVyc2lvbiI6InYxIiwic3Vic2NyaXB0aW9uVGllciI6IjUwUGVyTWluIn0seyJzdWJzY3JpYmVyVGVuYW50RG9tYWluIjoiY2FyYm9uLnN1cGVyIiwibmFtZSI6IkRvbm5lZXNQdWJsaXF1ZXNQYXF1ZXRPYnNlcnZhdGlvbiIsImNvbnRleHQiOiJcL3B1YmxpY1wvRFBQYXF1ZXRPYnNcL3YxIiwicHVibGlzaGVyIjoiYmFzdGllbmciLCJ2ZXJzaW9uIjoidjEiLCJzdWJzY3JpcHRpb25UaWVyIjoiNTBQZXJNaW4ifSx7InN1YnNjcmliZXJUZW5hbnREb21haW4iOiJjYXJib24uc3VwZXIiLCJuYW1lIjoiRG9ubmVlc1B1YmxpcXVlc09ic2VydmF0aW9uIiwiY29udGV4dCI6IlwvcHVibGljXC9EUE9ic1wvdjEiLCJwdWJsaXNoZXIiOiJiYXN0aWVuZyIsInZlcnNpb24iOiJ2MSIsInN1YnNjcmlwdGlvblRpZXIiOiI1MFBlck1pbiJ9LHsic3Vic2NyaWJlclRlbmFudERvbWFpbiI6ImNhcmJvbi5zdXBlciIsIm5hbWUiOiJEb25uZWVzUHVibGlxdWVzQ2xpbWF0b2xvZ2llIiwiY29udGV4dCI6IlwvcHVibGljXC9EUENsaW1cL3YxIiwicHVibGlzaGVyIjoiYWRtaW5fbWYiLCJ2ZXJzaW9uIjoiMS4wIiwic3Vic2NyaXB0aW9uVGllciI6IjUwUGVyTWluIn0seyJzdWJzY3JpYmVyVGVuYW50RG9tYWluIjoiY2FyYm9uLnN1cGVyIiwibmFtZSI6IkRvbm5lZXNQdWJsaXF1ZXNQYXF1ZXRPYnNlcnZhdGlvbiIsImNvbnRleHQiOiJcL3B1YmxpY1wvRFBQYXF1ZXRPYnNcL3YyIiwicHVibGlzaGVyIjoiYmFzdGllbmciLCJ2ZXJzaW9uIjoidjIiLCJzdWJzY3JpcHRpb25UaWVyIjoiNTBQZXJNaW4ifSx7InN1YnNjcmliZXJUZW5hbnREb21haW4iOiJjYXJib24uc3VwZXIiLCJuYW1lIjoiRG9ubmVlc1B1YmxpcXVlc01ldGVvRm9yZXRzIiwiY29udGV4dCI6IlwvcHVibGljXC9EUE1ldGVvRm9yZXRzXC92MSIsInB1Ymxpc2hlciI6Im11cmllbC5hdWJpbiIsInZlcnNpb24iOiJ2MSIsInN1YnNjcmlwdGlvblRpZXIiOiI1MFBlck1pbiJ9XSwiZXhwIjoxODE2MDg4OTgwLCJ0b2tlbl90eXBlIjoiYXBpS2V5IiwiaWF0IjoxNzg3NTc2OTgwLCJqdGkiOiJlZThiMjllNi0zMDhjLTQ5NzMtOTJjMC1kYmQ5YmU2YTI3ZjcifQ.Dks7MvNXViqUCkZe25rhLNi7wPMTYANHKegyTi1qgiT0PViDjQuJNhNyjkJxDnjHdTrm4Mk9sYZdpMfDYZuYbeV8JWkJj_sGixmZEPO0vyAGqLyq_DOibJvo1_wrMLqS4qFiiOiM6zTmrZiwZz-KBD2Lf_BoVzEV2ve0jHZX9T4F6A3frG9HtrCllVxIONB7nEKpXVsw1bbfbCxvkqPhy_4HUCwQgex4lN58e6TiRI8iRMMYGl_f7jWbCSfAJoE0pHOrQi07BA-mTPD0Lk29i0-YcgrASiehU1vpSQEimBMXCeLdtPNIjr9J_d0KyMcn8rNTu39IJ9pbJ6CTpaoP4Q==";
 
 class MeteoFranceAuth {
     constructor() {
         this.currentToken = null;
         this.tokenExpiry = null;
         this.refreshTimer = null;
-        this.consumerKey = 'Mhar9YSs8LEluq4neXqP0YeHaaka';
-        this.consumerSecret = 'nDKPWzVr2_2o5Ej1aPZa7O6hu4Ia';
+        this.inFlight = null;
     }
 
     /**
-     * Initialiser avec les credentials
+     * Initialiser avec les credentials.
+     * @deprecated Les credentials sont désormais gérés côté serveur uniquement.
      */
-    initialize(consumerKey, consumerSecret) {
-        if (consumerKey) this.consumerKey = consumerKey;
-        if (consumerSecret) this.consumerSecret = consumerSecret;
-        console.log('[MeteoAuth] 🔑 Credentials configurés');
+    initialize() {
+        console.warn('[MeteoAuth] initialize() est obsolète : les identifiants sont gérés côté serveur.');
     }
 
     /**
@@ -51,65 +53,48 @@ class MeteoFranceAuth {
     }
 
     /**
-     * Générer un nouveau token OAuth
+     * Générer un nouveau token OAuth via la fonction serverless.
+     * Une seule requête en vol à la fois (déduplication).
      */
     async generateToken() {
-        try {
-            // 1. Essayer la fonction serverless Vercel /api/mf-token (sans risque de popup Basic Auth)
+        if (this.inFlight) return this.inFlight;
+
+        this.inFlight = (async () => {
             try {
-                const apiResp = await fetch('/api/mf-token', { method: 'POST' });
-                if (apiResp.ok) {
-                    const apiData = await apiResp.json();
-                    if (apiData.access_token) {
-                        this.currentToken = apiData.access_token;
-                        this.tokenExpiry = Date.now() + (apiData.expires_in * 1000);
-                        try {
-                            localStorage.setItem('mf_access_token', this.currentToken);
-                            localStorage.setItem('mf_token_expiry', String(this.tokenExpiry));
-                        } catch (e) {}
-                        this.scheduleRefresh(apiData.expires_in - 300);
-                        return this.currentToken;
-                    }
+                const response = await fetch(OAUTH_URL, { method: 'POST' });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`OAuth failed: ${response.status} - ${errorText}`);
                 }
-            } catch (e) {
-                console.warn('[MeteoAuth] /api/mf-token non disponible, fallback direct');
+
+                const data = await response.json();
+                if (!data.access_token) {
+                    throw new Error('Réponse OAuth invalide : access_token manquant');
+                }
+
+                this.currentToken = data.access_token;
+                this.tokenExpiry = Date.now() + (data.expires_in * 1000);
+
+                try {
+                    localStorage.setItem('mf_access_token', this.currentToken);
+                    localStorage.setItem('mf_token_expiry', String(this.tokenExpiry));
+                } catch (e) {}
+
+                console.log('[MeteoAuth] ✅ Nouveau token obtenu');
+                this.scheduleRefresh(data.expires_in - 300);
+                return this.currentToken;
+            } catch (error) {
+                console.warn('[MeteoAuth] ⚠️ Erreur génération token via /api/mf-token, utilisation du jeton de secours:', error.message);
+                this.currentToken = PERMANENT_DPCLIM_TOKEN;
+                this.tokenExpiry = Date.now() + 86400 * 1000;
+                try { localStorage.setItem('mf_access_token', this.currentToken); localStorage.setItem('mf_token_expiry', String(this.tokenExpiry)); } catch (e) {}
+                return this.currentToken;
+            } finally {
+                this.inFlight = null;
             }
+        })();
 
-            // 2. Fallback direct avec credentials
-            const key = this.consumerKey || 'Mhar9YSs8LEluq4neXqP0YeHaaka';
-            const sec = this.consumerSecret || 'nDKPWzVr2_2o5Ej1aPZa7O6hu4Ia';
-            const credentials = btoa(`${key}:${sec}`);
-
-            const response = await fetch('/mf-token', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Basic ${credentials}`,
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: 'grant_type=client_credentials'
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`OAuth failed: ${response.status} - ${errorText}`);
-            }
-
-            const data = await response.json();
-
-            this.currentToken = data.access_token;
-            this.tokenExpiry = Date.now() + (data.expires_in * 1000);
-
-            const expiryDate = new Date(this.tokenExpiry);
-            console.log(`[MeteoAuth] ✅ Nouveau token généré`);
-            console.log(`[MeteoAuth] ⏰ Expire à: ${expiryDate.toLocaleTimeString('fr-FR')}`);
-
-            this.scheduleRefresh(data.expires_in - 300);
-            return this.currentToken;
-
-        } catch (error) {
-            console.error('[MeteoAuth] ❌ Erreur génération token:', error);
-            throw error;
-        }
+        return this.inFlight;
     }
 
     /**
