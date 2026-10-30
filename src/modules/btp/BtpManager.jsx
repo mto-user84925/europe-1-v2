@@ -48,9 +48,40 @@ const BtpManager = () => {
     const [autoSnow, setAutoSnow] = useState(true);
     const [snowTempLimit, setSnowTempLimit] = useState(0);
 
-    // States for data entry
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    // States for data entry (DPClim s'arrête à hier J-1)
+    const getYesterdayStr = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return d.toLocaleDateString('sv-SE');
+    };
+    const getSevenDaysAgoStr = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 7);
+        return d.toLocaleDateString('sv-SE');
+    };
+    const [startDate, setStartDate] = useState(getSevenDaysAgoStr);
+    const [endDate, setEndDate] = useState(getYesterdayStr);
+    const [timezoneMode, setTimezoneMode] = useState('local'); // 'local' (Heure Légale Paris) ou 'utc' (Météo-France)
+
+    const handleTimezoneChange = (newMode) => {
+        setTimezoneMode(newMode);
+        if (!globalData || Object.keys(globalData).length === 0) return;
+        const updated = {};
+        Object.entries(globalData).forEach(([dateKey, val]) => {
+            if (dateKey === '__metadata') {
+                updated.__metadata = val;
+                return;
+            }
+            const updatedRows = (val.rows || []).map(r => {
+                const targetH = newMode === 'utc' ? 
+                    (r.h_utc !== undefined ? r.h_utc : r.h) : 
+                    (r.h_local !== undefined ? r.h_local : r.h);
+                return { ...r, h: targetH };
+            }).sort((a, b) => a.h - b.h);
+            updated[dateKey] = { ...val, rows: updatedRows };
+        });
+        setGlobalData(updated);
+    };
     const [soilData, setSoilData] = useState({});
     const [heatData, setHeatData] = useState({});
     const [frozeData, setFrozeData] = useState({});
@@ -445,78 +476,167 @@ Voici les données brutes :`;
         reader.onload = async (event) => {
             try {
                 const content = event.target.result;
-                const lines = content.split('\n');
+                const lines = content.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
                 if (lines.length < 2) throw new Error("Fichier vide ou mal formaté");
 
-                // Headers: POSTE;DATE;RR;TN;TX;FXI
-                const dataLines = lines.slice(1).filter(l => l.trim().length > 0);
+                const headers = lines[0].split(';').map(h => h.trim().toUpperCase());
+                // Détection Météo-France DPClim (multi-colonnes RR1/T/FXI3S) vs Meteociel (6 colonnes RR/TN/TX/FXI)
+                const isDPClim = headers.includes('RR1') || headers.includes('FXI3S') || (headers.includes('POSTE') && headers.length > 8);
 
                 const days = {};
                 let firstDate = null;
                 let lastDate = null;
                 let stationId = '';
 
-                // On vérifie si les unités de vent sont en m/s ou km/h
-                // Si une valeur FXI > 40, on suppose que c'est du km/h
-                let maxFxiSeen = 0;
-                dataLines.forEach(line => {
-                    const cols = line.trim().split(';');
-                    if (cols.length >= 6) {
-                        const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
-                        if (fxi > maxFxiSeen) maxFxiSeen = fxi;
-                    }
-                });
-                const windMultiplier = maxFxiSeen > 40 ? 1 : 3.6;
-                console.log(`[BTP CSV] Max FXI seen: ${maxFxiSeen}. Using multiplier: ${windMultiplier}`);
+                if (isDPClim) {
+                    const idxPoste = headers.indexOf('POSTE') !== -1 ? headers.indexOf('POSTE') : headers.indexOf('NUM_POSTE');
+                    const idxDate = headers.indexOf('DATE');
+                    const idxT = headers.indexOf('T');
+                    const idxTN = headers.indexOf('TN');
+                    const idxTX = headers.indexOf('TX');
+                    const idxRR1 = headers.indexOf('RR1');
+                    const idxFF = headers.indexOf('FF');
+                    const idxFXI3S = headers.indexOf('FXI3S');
+                    const idxFXI = headers.indexOf('FXI');
+                    const idxU = headers.indexOf('U');
+                    const idxVV = headers.indexOf('VV');
 
-                dataLines.forEach(line => {
-                    const cols = line.trim().split(';');
-                    if (cols.length < 6) return;
+                    const parseVal = (cols, idx) => {
+                        if (idx === -1 || idx >= cols.length) return null;
+                        const v = cols[idx];
+                        if (!v || v === '' || v === 'null') return null;
+                        const n = parseFloat(v.replace(',', '.'));
+                        return isNaN(n) ? null : n;
+                    };
 
-                    const rawDate = cols[1]; // YYYYMMDD or YYYYMMDDHH
-                    if (!rawDate || (rawDate.length !== 8 && rawDate.length !== 10)) return;
+                    lines.slice(1).forEach(line => {
+                        const cols = line.split(';').map(c => c.trim());
+                        if (cols.length < 5) return;
+                        const rawDate = idxDate !== -1 ? cols[idxDate] : '';
+                        if (!rawDate || rawDate.length < 10) return;
 
-                    const year = parseInt(rawDate.substring(0, 4));
-                    const month = parseInt(rawDate.substring(4, 6));
-                    const day = parseInt(rawDate.substring(6, 8));
-                    const hour = rawDate.length === 10 ? parseInt(rawDate.substring(8, 10)) : 12;
+                        const year = parseInt(rawDate.substring(0, 4), 10);
+                        const month = parseInt(rawDate.substring(4, 6), 10);
+                        const day = parseInt(rawDate.substring(6, 8), 10);
+                        const hour = parseInt(rawDate.substring(8, 10), 10);
 
-                    const dateObj = new Date(year, month - 1, day);
-                    if (!firstDate || dateObj < firstDate) firstDate = dateObj;
-                    if (!lastDate || dateObj > lastDate) lastDate = dateObj;
+                        // DPClim est en UTC -> conversion Heure Légale française (Europe/Paris)
+                        const utcMs = Date.UTC(year, month - 1, day, hour, 0, 0);
+                        const dtUtc = new Date(utcMs);
+                        const frParts = new Intl.DateTimeFormat('fr-FR', {
+                            timeZone: 'Europe/Paris',
+                            year: 'numeric', month: '2-digit', day: '2-digit',
+                            hour: '2-digit', minute: '2-digit', hour12: false
+                        }).formatToParts(dtUtc);
+                        const pVal = (t) => frParts.find(p => p.type === t)?.value || '';
+                        const lYear = pVal('year');
+                        const lMonth = pVal('month');
+                        const lDay = pVal('day');
+                        const lHour = parseInt(pVal('hour'), 10);
 
-                    const dateKey = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
+                        const dateKey = timezoneMode === 'utc' ?
+                            `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}` :
+                            `${lDay}/${lMonth}/${lYear}`;
 
-                    stationId = cols[0];
+                        const pureDate = timezoneMode === 'utc' ? 
+                            new Date(year, month - 1, day) : 
+                            new Date(parseInt(lYear, 10), parseInt(lMonth, 10) - 1, parseInt(lDay, 10));
 
-                    const rr = parseFloat(cols[2]?.replace(',', '.')) || 0;
-                    const tn = parseFloat(cols[3]?.replace(',', '.')) || 0;
-                    const tx = parseFloat(cols[4]?.replace(',', '.')) || 0;
-                    const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
+                        if (!firstDate || pureDate < firstDate) firstDate = pureDate;
+                        if (!lastDate || pureDate > lastDate) lastDate = pureDate;
 
-                    if (!days[dateKey]) {
-                        days[dateKey] = {
-                            rows: [],
-                            soil: 0,
-                            forceHeat: false,
-                            forceFroze: false
-                        };
-                    }
+                        if (idxPoste !== -1 && cols[idxPoste]) stationId = cols[idxPoste];
 
-                    // T° à l'heure : moyenne de tn/tx si c'est vraiment de l'horaire précis tn=tx=t
-                    const temp = (tn + tx) / 2;
+                        const temp = parseVal(cols, idxT);
+                        const tn = parseVal(cols, idxTN);
+                        const tx = parseVal(cols, idxTX);
+                        const rr1 = parseVal(cols, idxRR1) ?? 0;
+                        const ffMS = parseVal(cols, idxFF);
+                        const ffKmh = ffMS !== null ? Math.round(ffMS * 3.6) : null;
+                        // Rafale normalisée 3 secondes UNIQUEMENT (FXI3S) - Exclusion totale du FXI
+                        const fxi3sMS = parseVal(cols, idxFXI3S);
+                        const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+                        const u = parseVal(cols, idxU);
+                        const vv = parseVal(cols, idxVV);
 
-                    days[dateKey].rows.push({
-                        h: hour,
-                        temp: temp,
-                        rain: rr,
-                        snow: 0,
-                        w_avg: fxi * windMultiplier, // On met la même chose car souvent seul FXI est dispo
-                        w_gst: fxi * windMultiplier,
-                        humi: 0,
-                        vv: null
+                        if (!days[dateKey]) {
+                            days[dateKey] = { rows: [], soil: 0, forceHeat: false, forceFroze: false };
+                        }
+
+                        days[dateKey].rows.push({
+                            h: timezoneMode === 'utc' ? hour : lHour,
+                            h_local: lHour,
+                            h_utc: hour,
+                            temp: temp !== null ? temp : (tx !== null && tn !== null ? parseFloat(((tx + tn) / 2).toFixed(1)) : null),
+                            rain: rr1,
+                            snow: 0,
+                            w_avg: ffKmh || (fxiKmh ? Math.round(fxiKmh * 0.6) : 0),
+                            w_gst: fxiKmh || 0,
+                            humi: u || 0,
+                            vv: vv
+                        });
                     });
-                });
+                } else {
+                    // Format standard Meteociel (6 colonnes : POSTE;DATE;RR;TN;TX;FXI)
+                    const dataLines = lines.slice(1);
+                    let maxFxiSeen = 0;
+                    dataLines.forEach(line => {
+                        const cols = line.trim().split(';');
+                        if (cols.length >= 6) {
+                            const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
+                            if (fxi > maxFxiSeen) maxFxiSeen = fxi;
+                        }
+                    });
+                    const windMultiplier = maxFxiSeen > 40 ? 1 : 3.6;
+
+                    dataLines.forEach(line => {
+                        const cols = line.trim().split(';');
+                        if (cols.length < 6) return;
+
+                        const rawDate = cols[1]; // YYYYMMDD or YYYYMMDDHH
+                        if (!rawDate || (rawDate.length !== 8 && rawDate.length !== 10)) return;
+
+                        const year = parseInt(rawDate.substring(0, 4), 10);
+                        const month = parseInt(rawDate.substring(4, 6), 10);
+                        const day = parseInt(rawDate.substring(6, 8), 10);
+                        const hour = rawDate.length === 10 ? parseInt(rawDate.substring(8, 10), 10) : 12;
+
+                        const dateObj = new Date(year, month - 1, day);
+                        if (!firstDate || dateObj < firstDate) firstDate = dateObj;
+                        if (!lastDate || dateObj > lastDate) lastDate = dateObj;
+
+                        const dateKey = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
+                        stationId = cols[0];
+
+                        const rr = parseFloat(cols[2]?.replace(',', '.')) || 0;
+                        const tn = parseFloat(cols[3]?.replace(',', '.')) || 0;
+                        const tx = parseFloat(cols[4]?.replace(',', '.')) || 0;
+                        const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
+
+                        if (!days[dateKey]) {
+                            days[dateKey] = { rows: [], soil: 0, forceHeat: false, forceFroze: false };
+                        }
+
+                        const temp = (tn + tx) / 2;
+                        // Meteociel est déjà en Heure Légale française
+                        const lHour = hour;
+                        const isSummer = (month >= 4 && month <= 10);
+                        const uHour = (hour - (isSummer ? 2 : 1) + 24) % 24;
+
+                        days[dateKey].rows.push({
+                            h: timezoneMode === 'utc' ? uHour : lHour,
+                            h_local: lHour,
+                            h_utc: uHour,
+                            temp: temp,
+                            rain: rr,
+                            snow: 0,
+                            w_avg: Math.round(fxi * windMultiplier),
+                            w_gst: Math.round(fxi * windMultiplier),
+                            humi: 0,
+                            vv: null
+                        });
+                    });
+                }
 
                 if (Object.keys(days).length === 0) throw new Error("Aucune donnée valide trouvée dans le fichier.");
 
@@ -532,18 +652,20 @@ Voici les données brutes :`;
                     });
                 });
 
-                // Préserver __metadata lors de l'import CSV
                 const prevMeta = globalData?.__metadata;
                 if (prevMeta) days.__metadata = prevMeta;
                 setGlobalData(days);
-                setSelectedStationId(stationId);
-                setStationMeteo(stationId); // On pourra le changer manuellement
+                if (stationId) {
+                    setSelectedStationId(stationId);
+                    setStationMeteo(stationId);
+                }
 
-                // Sync dates UI
-                setStartDate(firstDate.toISOString().split('T')[0]);
-                setEndDate(lastDate.toISOString().split('T')[0]);
+                if (firstDate && lastDate) {
+                    setStartDate(firstDate.toLocaleDateString('sv-SE'));
+                    setEndDate(lastDate.toLocaleDateString('sv-SE'));
+                }
 
-                setStatus(`✅ ${Object.keys(days).length} jours importés avec succès depuis le fichier.`);
+                setStatus(`✅ ${Object.keys(days).filter(k => k !== '__metadata').length} jours importés avec succès depuis le fichier.`);
             } catch (err) {
                 console.error(err);
                 setStatus('❌ Erreur Import : ' + err.message);
@@ -587,17 +709,32 @@ Voici les données brutes :`;
             const grouped = {};
             history.forEach(obs => {
                 const dt = obs.time instanceof Date ? obs.time : new Date(obs.time);
-                const dayCA = obs.date || dt.toLocaleDateString('fr-CA');
+                let dayKey;
+                if (obs.date_local && timezoneMode === 'local') {
+                    const [y, m, d] = obs.date_local.split('-');
+                    dayKey = `${d}/${m}/${y}`;
+                } else if (obs.date_utc && timezoneMode === 'utc') {
+                    const [y, m, d] = obs.date_utc.split('-');
+                    dayKey = `${d}/${m}/${y}`;
+                } else {
+                    dayKey = getLocalDateString(dt);
+                }
+
+                const dayCA = (timezoneMode === 'utc' && obs.date_utc) ? obs.date_utc : (obs.date_local || obs.date || dt.toLocaleDateString('fr-CA'));
                 if (dayCA < startDate || dayCA > endDate) return;
-                const dayKey = getLocalDateString(dt);
                 if (!grouped[dayKey]) grouped[dayKey] = [];
 
-                // Adapter format
+                const rowH = timezoneMode === 'utc' ?
+                    (obs.h_utc !== undefined ? obs.h_utc : (obs.h !== undefined ? obs.h : dt.getUTCHours())) :
+                    (obs.h_local !== undefined ? obs.h_local : (obs.h !== undefined ? obs.h : dt.getHours()));
+
                 grouped[dayKey].push({
-                    h: dt.getHours(),
+                    h: rowH,
+                    h_local: obs.h_local !== undefined ? obs.h_local : rowH,
+                    h_utc: obs.h_utc !== undefined ? obs.h_utc : rowH,
                     temp: obs.temp,
                     rain: obs.rain || 0,
-                    snow: 0, // Will be calculated if autoSnow is true
+                    snow: 0,
                     w_avg: obs.wind,
                     w_gst: obs.gust,
                     humi: obs.hum,
@@ -1103,7 +1240,7 @@ Voici les données brutes :`;
             // 3. Annexe Horaire + Graphique (dans le même bloc pour rester sur la même page)
             part2 += `<div class="btp-annexe-block">`;
             part2 += `<h3 class="btp-section-title">3. DONNÉES HORAIRES – ${date}</h3>`;
-            part2 += `<table class="btp-table-hourly"><thead><tr><th style="background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">Heure</th>`;
+            part2 += `<table class="btp-table-hourly"><thead><tr><th style="background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">Heure (${timezoneMode === 'utc' ? 'UTC' : 'Locale'})</th>`;
             if (annexCols.temp) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">T°C</th>";
             if (annexCols.rain) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">Pluie</th>";
             if (annexCols.snow) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">Neige</th>";
@@ -2021,6 +2158,44 @@ Voici les données brutes :`;
                                             return <option key={s.station_id} value={s.station_id}>{label}</option>
                                         })}
                                     </select>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <label style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Fuseau Horaire des Relevés</label>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleTimezoneChange('local')}
+                                            style={{
+                                                flex: 1, padding: '6px 4px', fontSize: '0.75rem', borderRadius: '6px', cursor: 'pointer',
+                                                border: timezoneMode === 'local' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                                                background: timezoneMode === 'local' ? '#eff6ff' : '#fff',
+                                                color: timezoneMode === 'local' ? '#1d4ed8' : '#64748b',
+                                                fontWeight: timezoneMode === 'local' ? '800' : '600'
+                                            }}
+                                            title="Heure Légale de Paris (UTC+2 été / UTC+1 hiver) - Conforme à la réalité des chantiers BTP"
+                                        >
+                                            🇫🇷 Heure Légale (Paris)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleTimezoneChange('utc')}
+                                            style={{
+                                                flex: 1, padding: '6px 4px', fontSize: '0.75rem', borderRadius: '6px', cursor: 'pointer',
+                                                border: timezoneMode === 'utc' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                                                background: timezoneMode === 'utc' ? '#eff6ff' : '#fff',
+                                                color: timezoneMode === 'utc' ? '#1d4ed8' : '#64748b',
+                                                fontWeight: timezoneMode === 'utc' ? '800' : '600'
+                                            }}
+                                            title="Temps Universel brut Météo-France (sans décalage été/hiver)"
+                                        >
+                                            🌐 Heure UTC (Météo-France)
+                                        </button>
+                                    </div>
+                                    <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                        {timezoneMode === 'local'
+                                            ? '💡 Alignée sur le travail de chantier (1h UTC = 3h en été, 2h en hiver)'
+                                            : '💡 Données brutes Météo-France DPClim (Temps Universel)'}
+                                    </span>
                                 </div>
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                     <div style={{ flex: 1 }}>

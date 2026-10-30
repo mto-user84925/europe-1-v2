@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Service d'accès à l'API Climatologique officielle Météo-France (DPClim)
  * Permet de récupérer les archives quotidiennes (1950 - Hier) pour toutes les stations françaises.
  */
@@ -9,22 +9,42 @@ const BASE_CLIM_URL = typeof window !== 'undefined' ? '/api-meteo-clim' : 'https
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// --- Utilitaires de date en UTC explicite -------------------------------
+// Les dates d'API sont des chaînes 'YYYY-MM-DD'. Les manipuler via
+// new Date('YYYY-MM-DD') + toISOString() provoque des décalages d'un jour
+// selon le fuseau du poste. On reste donc en arithmétique UTC pure.
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const parseISODateUTC = (str) => {
+    const [y, m, d] = String(str).slice(0, 10).split('-').map(Number);
+    return Date.UTC(y, (m || 1) - 1, d || 1);
+};
+
+const formatISODateUTC = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+// Date du jour (locale) au format YYYY-MM-DD, sans passer par toISOString().
+const todayLocalISODate = () => new Date().toLocaleDateString('sv-SE');
+
+// Hier (local) au format YYYY-MM-DD.
+const yesterdayLocalISODate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString('sv-SE');
+};
+
 const splitDateRange = (startDate, endDate, maxDays = 360) => {
     const ranges = [];
-    let cur = new Date(startDate);
-    const end = new Date(endDate);
-    while (cur <= end) {
-        let chunkEnd = new Date(cur);
-        chunkEnd.setDate(chunkEnd.getDate() + (maxDays - 1));
-        if (chunkEnd > end) {
-            chunkEnd = new Date(end);
-        }
+    let curMs = parseISODateUTC(startDate);
+    const endMs = parseISODateUTC(endDate);
+    if (Number.isNaN(curMs) || Number.isNaN(endMs) || curMs > endMs) return [];
+
+    while (curMs <= endMs) {
+        const chunkEndMs = Math.min(curMs + (maxDays - 1) * DAY_MS, endMs);
         ranges.push({
-            start: cur.toISOString().split('T')[0],
-            end: chunkEnd.toISOString().split('T')[0]
+            start: formatISODateUTC(curMs),
+            end: formatISODateUTC(chunkEndMs)
         });
-        cur = new Date(chunkEnd);
-        cur.setDate(cur.getDate() + 1);
+        curMs = chunkEndMs + DAY_MS;
     }
     return ranges;
 };
@@ -41,7 +61,7 @@ export const meteoFranceClimService = {
         const ids = Array.isArray(stationIds) ? stationIds : [stationIds];
         if (!ids.length || !startDate || !endDate) return [];
 
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const yesterday = yesterdayLocalISODate();
         let safeEnd = endDate > yesterday ? yesterday : endDate;
         if (startDate > yesterday) return [];
 
@@ -141,7 +161,7 @@ export const meteoFranceClimService = {
             throw new Error('Paramètres manquants (stationId, startDate, endDate requis)');
         }
 
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const yesterday = yesterdayLocalISODate();
         let safeEnd = endDate;
         if (safeEnd > yesterday) {
             safeEnd = yesterday;
@@ -222,6 +242,7 @@ export const meteoFranceClimService = {
             const fileResp = await fetch(fileUrl, {
                 headers: {
                     'Authorization': 'Bearer ' + token,
+                    'apikey': token,
                     'Accept': '*/*'
                 }
             });
@@ -235,7 +256,14 @@ export const meteoFranceClimService = {
             } else if (fileResp.status === 204) {
                 onProgress(`Génération du fichier en cours… (tentative ${attempt}/15)`);
                 await sleep(2500);
-            } else if (fileResp.status === 404 || fileResp.status === 410) {
+            } else if (fileResp.status === 404) {
+                if (attempt <= 6) {
+                    onProgress(`Génération du fichier en cours… (tentative ${attempt}/15)`);
+                    await sleep(2500);
+                } else {
+                    break;
+                }
+            } else if (fileResp.status === 410) {
                 break;
             } else {
                 const errText = await fileResp.text();
@@ -319,13 +347,11 @@ export const meteoFranceClimService = {
             const tm = parseVal(idxTM) ?? parseVal(idxTNTXM) ?? (tn !== null && tx !== null ? parseFloat(((tn + tx) / 2).toFixed(1)) : null);
             const rr = parseVal(idxRR) ?? 0;
             
-            // Rafale maximale de pointe (maximum réel entre FXI instantané et FXI3S normalisé)
+            // Rafale maximale normalisée sur 3 secondes UNIQUEMENT (FXI3S) - Exclusion totale du FXI
             const fxi3sMS = parseVal(idxFXI3S);
-            const fxiMS = parseVal(idxFXI);
-            const activeFxiMS = (fxiMS !== null && fxi3sMS !== null) ? Math.max(fxiMS, fxi3sMS) : (fxiMS !== null ? fxiMS : fxi3sMS);
-            const fxiKmh = activeFxiMS !== null ? Math.round(activeFxiMS * 3.6) : null;
-            const hxi = parseHour(idxHXI3S) || parseHour(idxHXI);
-            const dxi = parseVal(idxDXI3S) ?? parseVal(idxDXI);
+            const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+            const hxi = parseHour(idxHXI3S);
+            const dxi = parseVal(idxDXI3S);
 
             results.push({
                 stationId: idxPoste !== -1 ? cols[idxPoste] : '',
@@ -369,7 +395,7 @@ export const meteoFranceClimService = {
             throw new Error('Paramètres manquants (stationId, startDate, endDate requis)');
         }
 
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const yesterday = yesterdayLocalISODate();
         let safeEnd = endDate;
         if (safeEnd > yesterday) safeEnd = yesterday;
         if (startDate > yesterday) return [];
@@ -409,6 +435,7 @@ export const meteoFranceClimService = {
         let cmdResp = await fetch(cmdUrl, {
             headers: {
                 'Authorization': 'Bearer ' + token,
+                'apikey': token,
                 'Accept': 'application/json'
             }
         });
@@ -418,6 +445,7 @@ export const meteoFranceClimService = {
             cmdResp = await fetch(cmdUrl, {
                 headers: {
                     'Authorization': 'Bearer ' + token,
+                    'apikey': token,
                     'Accept': 'application/json'
                 }
             });
@@ -442,6 +470,7 @@ export const meteoFranceClimService = {
             const fileResp = await fetch(fileUrl, {
                 headers: {
                     'Authorization': 'Bearer ' + token,
+                    'apikey': token,
                     'Accept': '*/*'
                 }
             });
@@ -455,7 +484,14 @@ export const meteoFranceClimService = {
             } else if (fileResp.status === 204) {
                 onProgress(`Génération horaire en cours… (${attempt}/15)`);
                 await sleep(2500);
-            } else if (fileResp.status === 404 || fileResp.status === 410) {
+            } else if (fileResp.status === 404) {
+                if (attempt <= 6) {
+                    onProgress(`Génération horaire en cours… (${attempt}/15)`);
+                    await sleep(2500);
+                } else {
+                    break;
+                }
+            } else if (fileResp.status === 410) {
                 break;
             } else {
                 const errText = await fileResp.text();
@@ -521,7 +557,23 @@ export const meteoFranceClimService = {
             const day = parseInt(rawDate.substring(6, 8), 10);
             const hour = parseInt(rawDate.substring(8, 10), 10);
 
-            const dt = new Date(year, month - 1, day, hour, 0, 0);
+            // Météo-France DPClim est en Temps Universel (UTC)
+            const utcMs = Date.UTC(year, month - 1, day, hour, 0, 0);
+            const dtUtc = new Date(utcMs);
+
+            // Conversion officielle en Heure Légale française (Europe/Paris : UTC+2 en été, UTC+1 en hiver)
+            const frParts = new Intl.DateTimeFormat('fr-FR', {
+                timeZone: 'Europe/Paris',
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', hour12: false
+            }).formatToParts(dtUtc);
+            const pVal = (t) => frParts.find(p => p.type === t)?.value || '';
+            const localYear = pVal('year');
+            const localMonth = pVal('month');
+            const localDay = pVal('day');
+            const localHour = parseInt(pVal('hour'), 10);
+            const localDate = `${localYear}-${localMonth}-${localDay}`;
+            const localDt = new Date(parseInt(localYear, 10), parseInt(localMonth, 10) - 1, parseInt(localDay, 10), localHour, 0, 0);
 
             const temp = parseVal(cols, idxT);
             const tn = parseVal(cols, idxTN);
@@ -530,11 +582,9 @@ export const meteoFranceClimService = {
             const ffMS = parseVal(cols, idxFF);
             const ffKmh = ffMS !== null ? Math.round(ffMS * 3.6) : null;
             
-            // Rafale maximale de pointe (maximum réel entre FXI instantané et FXI3S normalisé)
+            // Rafale maximale normalisée sur 3 secondes UNIQUEMENT (FXI3S) - Exclusion totale du FXI
             const fxi3sMS = parseVal(cols, idxFXI3S);
-            const fxiMS = parseVal(cols, idxFXI);
-            const activeFxiMS = (fxiMS !== null && fxi3sMS !== null) ? Math.max(fxiMS, fxi3sMS) : (fxiMS !== null ? fxiMS : fxi3sMS);
-            const fxiKmh = activeFxiMS !== null ? Math.round(activeFxiMS * 3.6) : (ffKmh !== null ? Math.round(ffKmh * 1.3) : null);
+            const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
 
             const u = parseVal(cols, idxU);
             const pmer = parseVal(cols, idxPMER) ?? parseVal(cols, idxPSTAT);
@@ -542,10 +592,15 @@ export const meteoFranceClimService = {
             const snow = parseVal(cols, idxHNEIGE) ?? parseVal(cols, idxNEIGETOT) ?? 0;
 
             results.push({
-                time: dt,
+                time: localDt,
+                time_utc: dtUtc,
                 stationId: idxPoste !== -1 ? cols[idxPoste] : '',
-                date: `${rawDate.substring(0, 4)}-${rawDate.substring(4, 6)}-${rawDate.substring(6, 8)}`,
-                h: hour,
+                date: localDate,
+                date_local: localDate,
+                date_utc: `${rawDate.substring(0, 4)}-${rawDate.substring(4, 6)}-${rawDate.substring(6, 8)}`,
+                h: localHour,
+                h_local: localHour,
+                h_utc: hour,
                 temp: temp !== null ? temp : (tx !== null && tn !== null ? parseFloat(((tx + tn) / 2).toFixed(1)) : null),
                 tn: tn,
                 tx: tx,

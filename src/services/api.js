@@ -10,6 +10,24 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 const _stationHistoryCache = new Map();
+const _STATION_CACHE_MAX_ENTRIES = 60;
+
+// Date locale au format YYYY-MM-DD (évite le décalage UTC de toISOString()).
+// toLocaleDateString('sv-SE') renvoie toujours YYYY-MM-DD en heure locale.
+const toLocalISODate = (d = new Date()) => {
+    const dt = d instanceof Date ? d : new Date(d);
+    if (isNaN(dt.getTime())) return '';
+    return dt.toLocaleDateString('sv-SE');
+};
+
+const cacheStationHistory = (key, value) => {
+    // Plafonnement du cache : évite une croissance mémoire illimitée.
+    if (_stationHistoryCache.size >= _STATION_CACHE_MAX_ENTRIES) {
+        const oldestKey = _stationHistoryCache.keys().next().value;
+        _stationHistoryCache.delete(oldestKey);
+    }
+    _stationHistoryCache.set(key, value);
+};
 
 export const weatherAPI = {
     /**
@@ -19,7 +37,7 @@ export const weatherAPI = {
         if (!stationId) return [];
         
         const targetDate = dateObj ? new Date(dateObj) : new Date();
-        const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+        const dateStr = toLocalISODate(targetDate);
         const cacheKey = `${stationId}_${dateStr}`;
         
         // 1. Cache mémoire ultra-rapide (0 ms)
@@ -28,8 +46,7 @@ export const weatherAPI = {
         }
 
         try {
-            const todayStr = new Date().toISOString().split('T')[0];
-            const isToday = dateStr === todayStr;
+            const isToday = dateStr === toLocalISODate(new Date());
 
             let finalData = [];
 
@@ -101,7 +118,7 @@ export const weatherAPI = {
 
             // Mettre en cache les résultats passés
             if (finalData.length > 0 && !isToday) {
-                _stationHistoryCache.set(cacheKey, finalData);
+                cacheStationHistory(cacheKey, finalData);
             }
 
             return finalData;
@@ -117,7 +134,7 @@ export const weatherAPI = {
     getStationHourlyHistory: async (stationId, dateObj = null) => {
         if (!stationId) return [];
         const d = dateObj ? new Date(dateObj) : new Date(Date.now() - 86400000);
-        const dStr = d.toISOString().split('T')[0];
+        const dStr = toLocalISODate(d);
         return weatherAPI.getStationHourlyHistoryRange(stationId, dStr, dStr);
     },
 
@@ -137,11 +154,16 @@ export const weatherAPI = {
                 if (dpHourly && dpHourly.length > 0) {
                     return dpHourly
                         .filter(obs => {
-                            const d = obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : '');
+                            const d = obs.date_local || obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : '');
                             return d >= startDate && d <= endDate;
                         })
                         .map(obs => ({
-                            date: obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : ''),
+                            date: obs.date_local || obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : ''),
+                            date_local: obs.date_local,
+                            date_utc: obs.date_utc,
+                            h: obs.h_local !== undefined ? obs.h_local : (obs.h !== undefined ? obs.h : (obs.time instanceof Date ? obs.time.getHours() : 0)),
+                            h_local: obs.h_local,
+                            h_utc: obs.h_utc,
                             time: obs.time instanceof Date ? obs.time : new Date(obs.time),
                             temp: obs.temp,
                             hum: obs.hum,
@@ -255,15 +277,24 @@ export const weatherAPI = {
                 const { data: nearStations } = await supabase
                     .from('stations')
                     .select('id, lat, lon')
-                    .not('lat', 'is', null);
+                    .not('lat', 'is', null)
+                    .not('lon', 'is', null);
 
                 if (nearStations && nearStations.length > 0) {
-                    // Sort by distance (Haversine approx)
-                    nearStations.sort((a, b) => {
-                        const distA = Math.sqrt(Math.pow(a.lat - lat, 2) + Math.pow(a.lon - lon, 2));
-                        const distB = Math.sqrt(Math.pow(b.lat - lat, 2) + Math.pow(b.lon - lon, 2));
-                        return distA - distB;
-                    });
+                    // Distance de Haversine (approximation suffisante pour un tri)
+                    const R = 6371; // km
+                    const toRad = (deg) => (deg * Math.PI) / 180;
+                    const haversine = (lat2, lon2) => {
+                        const dLat = toRad(lat2 - lat);
+                        const dLon = toRad(lon2 - lon);
+                        const a =
+                            Math.sin(dLat / 2) ** 2 +
+                            Math.cos(toRad(lat)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+                        return 2 * R * Math.asin(Math.sqrt(a));
+                    };
+                    nearStations.sort(
+                        (a, b) => haversine(a.lat, a.lon) - haversine(b.lat, b.lon)
+                    );
                     targetStationId = nearStations[0].id;
                 }
             }
