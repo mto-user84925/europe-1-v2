@@ -154,8 +154,9 @@ export const weatherAPI = {
                 if (dpHourly && dpHourly.length > 0) {
                     return dpHourly
                         .filter(obs => {
-                            const d = obs.date_local || obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : '');
-                            return d >= startDate && d <= endDate;
+                            const dLocal = obs.date_local || obs.date;
+                            const dUtc = obs.date_utc || obs.date;
+                            return (dLocal >= startDate && dLocal <= endDate) || (dUtc >= startDate && dUtc <= endDate);
                         })
                         .map(obs => ({
                             date: obs.date_local || obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : ''),

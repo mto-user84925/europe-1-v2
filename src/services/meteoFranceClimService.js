@@ -434,8 +434,13 @@ export const meteoFranceClimService = {
 
     async _fetchSingleStationHourlyHistory(stationId, startDate, endDate, onProgress = () => {}) {
         let token = await meteoAuth.getValidToken();
-        const deb = startDate + 'T00:00:00Z';
-        const fin = endDate + 'T23:59:59Z';
+
+        // ponytail: DPClim stocke en UTC. Pour obtenir 00h et 01h locale française (UTC+1 hiver / UTC+2 été),
+        // il faut inclure la fin de soirée de la veille en UTC (dès 20h00Z).
+        const prevDayMs = parseISODateUTC(startDate) - DAY_MS;
+        const prevDayStr = formatISODateUTC(prevDayMs);
+        const deb = `${prevDayStr}T20:00:00Z`;
+        const fin = `${endDate}T23:59:59Z`;
 
         onProgress(`Commande horaire DPClim (${startDate} → ${endDate})…`);
 
