@@ -23,9 +23,21 @@ const CertificatMeteoManager = () => {
     const [emitterEmail, setEmitterEmail] = useState('patrick.marliere@wanadoo.fr');
     const [companyLogo, setCompanyLogo] = useState('/logo.jpg');
 
+    // --- Helpers de dates certifiées DPClim (hier J-1 maximum) ---
+    const getYesterdayDate = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return d.toLocaleDateString('sv-SE');
+    };
+    const getSevenDaysAgoDate = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 7);
+        return d.toLocaleDateString('sv-SE');
+    };
+
     // --- États de l'événement ---
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(getYesterdayDate);
+    const [endDate, setEndDate] = useState(getYesterdayDate);
     const [isPeriod, setIsPeriod] = useState(false);
     const [eventTime, setEventTime] = useState('');
     const [eventRange, setEventRange] = useState(''); // Ex: "Matin", "14h-16h"
@@ -305,7 +317,13 @@ const CertificatMeteoManager = () => {
             const enrichedCandidates = await Promise.all(candidates.map(async (s) => {
                 try {
                     const { meteoFrancePosteService } = await import('../../services/meteoFrancePosteService');
-                    let sHistory = await weatherAPI.getStationHourlyHistoryRange(s.id, startDate, endDate);
+                    const targetEnd = isPeriod ? endDate : startDate;
+                    const yesterdayStr = getYesterdayDate();
+                    let qStart = startDate;
+                    let qEnd = targetEnd;
+                    if (qEnd > yesterdayStr) qEnd = yesterdayStr;
+                    if (qStart > yesterdayStr) qStart = yesterdayStr;
+                    let sHistory = await weatherAPI.getStationHourlyHistoryRange(s.id, qStart, qEnd);
 
                     if (!sHistory || sHistory.length === 0) {
                         try {
@@ -370,12 +388,12 @@ const CertificatMeteoManager = () => {
                     if (sHistory && sHistory.length > 0) {
                         // Find Row with Max Gust
                         const maxGustRow = sHistory.reduce((prev, curr) => {
-                            const prevGust = prev.gust || prev.w_gst || prev.fxi || 0;
-                            const currGust = curr.gust || curr.w_gst || curr.fxi || 0;
+                            const prevGust = prev.gust || prev.w_gst || 0;
+                            const currGust = curr.gust || curr.w_gst || 0;
                             return (currGust > prevGust) ? curr : prev;
-                        }, { gust: 0, w_gst: 0, fxi: 0, time: null }); // Initialize with a default object
+                        }, { gust: 0, w_gst: 0, time: null });
 
-                        const maxG = maxGustRow.gust || maxGustRow.w_gst || maxGustRow.fxi || 0;
+                        const maxG = maxGustRow.gust || maxGustRow.w_gst || 0;
                         sMaxGustDate = maxG > 0 ? maxGustRow.time : null;
 
                         const sumR = sHistory.reduce((acc, r) => acc + (r.rain || r.rr1 || 0), 0);
@@ -578,69 +596,148 @@ const CertificatMeteoManager = () => {
                 const lines = content.split('\n');
                 if (lines.length < 2) throw new Error("Fichier vide ou mal formaté");
 
-                // Headers: POSTE;DATE;RR;TN;TX;FXI
-                const dataLines = lines.slice(1).filter(l => l.trim().length > 0);
+                const headers = lines[0].split(';').map(h => h.trim().toUpperCase());
+                const isDPClim = headers.includes('RR1') || headers.includes('FXI3S') || (headers.includes('POSTE') && headers.length > 8);
 
                 const rows = [];
                 let firstDate = null;
                 let lastDate = null;
                 let stationId = '';
 
-                // On vérifie si les unités de vent sont en m/s ou km/h
-                // Si une valeur FXI > 40, on suppose que c'est du km/h
-                let maxFxiSeen = 0;
-                dataLines.forEach(line => {
-                    const cols = line.trim().split(';');
-                    if (cols.length >= 6) {
-                        const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
-                        if (fxi > maxFxiSeen) maxFxiSeen = fxi;
-                    }
-                });
-                const windMultiplier = maxFxiSeen > 40 ? 1 : 3.6;
-                console.log(`[Certificat CSV] Max FXI seen: ${maxFxiSeen}. Using multiplier: ${windMultiplier}`);
+                if (isDPClim) {
+                    const idxPoste = headers.indexOf('POSTE') !== -1 ? headers.indexOf('POSTE') : headers.indexOf('NUM_POSTE');
+                    const idxDate = headers.indexOf('DATE');
+                    const idxT = headers.indexOf('T');
+                    const idxTN = headers.indexOf('TN');
+                    const idxTX = headers.indexOf('TX');
+                    const idxRR1 = headers.indexOf('RR1');
+                    const idxFF = headers.indexOf('FF');
+                    const idxFXI3S = headers.indexOf('FXI3S');
+                    const idxU = headers.indexOf('U');
+                    const idxVV = headers.indexOf('VV');
 
-                dataLines.forEach(line => {
-                    const cols = line.trim().split(';');
-                    if (cols.length < 5) return;
+                    const parseVal = (cols, idx) => {
+                        if (idx === -1 || idx >= cols.length) return null;
+                        const v = cols[idx];
+                        if (!v || v === '' || v === 'null') return null;
+                        const n = parseFloat(v.replace(',', '.'));
+                        return isNaN(n) ? null : n;
+                    };
 
-                    const rawDate = cols[1]; // YYYYMMDD or YYYYMMDDHH
-                    if (!rawDate || (rawDate.length !== 8 && rawDate.length !== 10)) return;
+                    lines.slice(1).forEach(line => {
+                        const cols = line.split(';').map(c => c.trim());
+                        if (cols.length < 5) return;
+                        const rawDate = idxDate !== -1 ? cols[idxDate] : '';
+                        if (!rawDate || rawDate.length < 10) return;
 
-                    const year = parseInt(rawDate.substring(0, 4));
-                    const month = parseInt(rawDate.substring(4, 6));
-                    const day = parseInt(rawDate.substring(6, 8));
-                    const hour = rawDate.length === 10 ? parseInt(rawDate.substring(8, 10)) : 12;
+                        const year = parseInt(rawDate.substring(0, 4), 10);
+                        const month = parseInt(rawDate.substring(4, 6), 10);
+                        const day = parseInt(rawDate.substring(6, 8), 10);
+                        const hour = parseInt(rawDate.substring(8, 10), 10);
 
-                    const dateObj = new Date(year, month - 1, day, hour, 0, 0);
-                    const datePure = new Date(year, month - 1, day);
+                        const utcMs = Date.UTC(year, month - 1, day, hour, 0, 0);
+                        const dtUtc = new Date(utcMs);
+                        const frParts = new Intl.DateTimeFormat('fr-FR', {
+                            timeZone: 'Europe/Paris',
+                            year: 'numeric', month: '2-digit', day: '2-digit',
+                            hour: '2-digit', minute: '2-digit', hour12: false
+                        }).formatToParts(dtUtc);
+                        const pVal = (t) => frParts.find(p => p.type === t)?.value || '';
+                        const lYear = pVal('year');
+                        const lMonth = pVal('month');
+                        const lDay = pVal('day');
+                        const lHour = parseInt(pVal('hour'), 10);
 
-                    if (!firstDate || datePure < firstDate) firstDate = datePure;
-                    if (!lastDate || datePure > lastDate) lastDate = datePure;
+                        const dateObj = new Date(parseInt(lYear, 10), parseInt(lMonth, 10) - 1, parseInt(lDay, 10), lHour, 0, 0);
+                        const datePure = new Date(parseInt(lYear, 10), parseInt(lMonth, 10) - 1, parseInt(lDay, 10));
 
-                    stationId = cols[0];
+                        if (!firstDate || datePure < firstDate) firstDate = datePure;
+                        if (!lastDate || datePure > lastDate) lastDate = datePure;
 
-                    const rr = parseFloat(cols[2]?.replace(',', '.')) || 0;
-                    const tn = parseFloat(cols[3]?.replace(',', '.')) || 99;
-                    const tx = parseFloat(cols[4]?.replace(',', '.')) || -99;
-                    const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
+                        if (idxPoste !== -1 && cols[idxPoste]) stationId = cols[idxPoste];
 
-                    let tempVal = (tn !== 99 && tx !== -99) ? (tn + tx) / 2 : (tn !== 99 ? tn : tx);
-                    if (tempVal === 99 || tempVal === -99) tempVal = 0;
+                        const temp = parseVal(cols, idxT);
+                        const tn = parseVal(cols, idxTN);
+                        const tx = parseVal(cols, idxTX);
+                        const rr1 = parseVal(cols, idxRR1) ?? 0;
+                        const ffMS = parseVal(cols, idxFF);
+                        const ffKmh = ffMS !== null ? Math.round(ffMS * 3.6) : null;
+                        const fxi3sMS = parseVal(cols, idxFXI3S);
+                        const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+                        const u = parseVal(cols, idxU);
+                        const vv = parseVal(cols, idxVV);
 
-                    rows.push({
-                        time: dateObj,
-                        h: hour,
-                        temp: tempVal,
-                        tmin: tn !== 99 ? tn : null,
-                        tmax: tx !== -99 ? tx : null,
-                        rain: rr,
-                        w_avg: fxi * windMultiplier,
-                        w_gst: fxi * windMultiplier,
-                        humi: 0,
-                        pres: 1013,
-                        vv: 10
+                        let tempVal = temp !== null ? temp : (tx !== null && tn !== null ? parseFloat(((tx + tn) / 2).toFixed(1)) : (tn !== null ? tn : (tx !== null ? tx : 0)));
+
+                        rows.push({
+                            time: dateObj,
+                            h: lHour,
+                            temp: tempVal,
+                            tmin: tn,
+                            tmax: tx,
+                            rain: rr1,
+                            w_avg: ffKmh || (fxiKmh ? Math.round(fxiKmh * 0.6) : 0),
+                            w_gst: fxiKmh || 0,
+                            humi: u || 0,
+                            pres: 1013,
+                            vv: vv || 10
+                        });
                     });
-                });
+                } else {
+                    const dataLines = lines.slice(1).filter(l => l.trim().length > 0);
+                    let maxFxiSeen = 0;
+                    dataLines.forEach(line => {
+                        const cols = line.trim().split(';');
+                        if (cols.length >= 6) {
+                            const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
+                            if (fxi > maxFxiSeen) maxFxiSeen = fxi;
+                        }
+                    });
+                    const windMultiplier = maxFxiSeen > 40 ? 1 : 3.6;
+
+                    dataLines.forEach(line => {
+                        const cols = line.trim().split(';');
+                        if (cols.length < 5) return;
+
+                        const rawDate = cols[1];
+                        if (!rawDate || (rawDate.length !== 8 && rawDate.length !== 10)) return;
+
+                        const year = parseInt(rawDate.substring(0, 4));
+                        const month = parseInt(rawDate.substring(4, 6));
+                        const day = parseInt(rawDate.substring(6, 8));
+                        const hour = rawDate.length === 10 ? parseInt(rawDate.substring(8, 10)) : 12;
+
+                        const dateObj = new Date(year, month - 1, day, hour, 0, 0);
+                        const datePure = new Date(year, month - 1, day);
+
+                        if (!firstDate || datePure < firstDate) firstDate = datePure;
+                        if (!lastDate || datePure > lastDate) lastDate = datePure;
+
+                        stationId = cols[0];
+
+                        const rr = parseFloat(cols[2]?.replace(',', '.')) || 0;
+                        const tn = parseFloat(cols[3]?.replace(',', '.')) || 99;
+                        const tx = parseFloat(cols[4]?.replace(',', '.')) || -99;
+                        const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
+
+                        let tempVal = (tn !== 99 && tx !== -99) ? (tn + tx) / 2 : (tn !== 99 ? tn : tx);
+                        if (tempVal === 99 || tempVal === -99) tempVal = 0;
+
+                        rows.push({
+                            time: dateObj,
+                            h: hour,
+                            temp: tempVal,
+                            tmin: tn !== 99 ? tn : null,
+                            tmax: tx !== -99 ? tx : null,
+                            rain: rr,
+                            w_avg: fxi * windMultiplier,
+                            w_gst: fxi * windMultiplier,
+                            humi: 0,
+                            pres: 1013,
+                            vv: 10
+                        });
+                    });
+                }
 
                 if (rows.length === 0) throw new Error("Aucune donnée valide trouvée dans le fichier.");
 
@@ -888,9 +985,14 @@ const CertificatMeteoManager = () => {
                 }
             }
 
-            // STRATÉGIE 2 : Pour toute période passée (ex: Janvier 2026, 1950 à hier), appel direct global ultra-rapide
+            // STRATÉGIE 2 : Pour toute période passée (archives officielles DPClim Météo-France)
             if (history.length === 0) {
-                history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, startDate, finalEndDate, (msg) => setStatus('⏳ ' + msg));
+                const yesterdayStr = getYesterdayDate();
+                let qStart = startDate;
+                let qEnd = finalEndDate;
+                if (qEnd > yesterdayStr) qEnd = yesterdayStr;
+                if (qStart > yesterdayStr) qStart = yesterdayStr;
+                history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, qStart, qEnd, (msg) => setStatus('⏳ ' + msg));
             }
 
             if (!history || history.length === 0) {
@@ -902,12 +1004,12 @@ const CertificatMeteoManager = () => {
             // On garde le timestamp complet pour identifier le jour/heure exact
             const rows = history
                 .filter(obs => {
-                    const d = obs.date || (obs.time ? new Date(obs.time).toLocaleDateString('fr-CA') : '');
+                    const d = obs.date_local || obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : '');
                     return d >= startDate && d <= finalEndDate;
                 })
                 .map(obs => ({
-                time: new Date(obs.time),
-                h: new Date(obs.time).getHours(),
+                time: obs.time instanceof Date ? obs.time : new Date(obs.time),
+                h: obs.h_local !== undefined ? obs.h_local : (obs.h !== undefined ? obs.h : (obs.time instanceof Date ? obs.time.getHours() : 0)),
                 temp: obs.temp,
                 rain: obs.rain || 0,
                 w_avg: obs.wind,

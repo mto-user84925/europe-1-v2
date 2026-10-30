@@ -28,9 +28,21 @@ const AttestationIntemperieManager = () => {
     const [refDossier, setRefDossier] = useState('ATT-' + Date.now().toString().slice(-6));
     const [docType, setDocType] = useState('1'); // 1=Synthèse, 2=Détaillés, 3=Classification
 
+    // --- Helpers de dates certifiées DPClim (hier J-1 maximum) ---
+    const getYesterdayDate = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return d.toLocaleDateString('sv-SE');
+    };
+    const getSevenDaysAgoDate = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 7);
+        return d.toLocaleDateString('sv-SE');
+    };
+
     // --- États de la période & Station ---
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(getSevenDaysAgoDate);
+    const [endDate, setEndDate] = useState(getYesterdayDate);
     const [isPeriod, setIsPeriod] = useState(false);
     const [selectedDept, setSelectedDept] = useState('');
     const [stations, setStations] = useState([]);
@@ -322,68 +334,147 @@ const AttestationIntemperieManager = () => {
                 const lines = content.split('\n');
                 if (lines.length < 2) throw new Error("Fichier vide ou mal formaté");
 
-                // Headers: POSTE;DATE;RR;TN;TX;FXI
-                const dataLines = lines.slice(1).filter(l => l.trim().length > 0);
+                const headers = lines[0].split(';').map(h => h.trim().toUpperCase());
+                const isDPClim = headers.includes('RR1') || headers.includes('FXI3S') || (headers.includes('POSTE') && headers.length > 8);
 
                 const rows = [];
                 let firstDate = null;
                 let lastDate = null;
                 let stationId = '';
 
-                // On vérifie si les unités de vent sont en m/s ou km/h
-                // Si une valeur FXI > 40, on suppose que c'est déjà du km/h
-                let maxFxiSeen = 0;
-                dataLines.forEach(line => {
-                    const cols = line.trim().split(';');
-                    if (cols.length >= 6) {
-                        const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
-                        if (fxi > maxFxiSeen) maxFxiSeen = fxi;
-                    }
-                });
-                const windMultiplier = maxFxiSeen > 40 ? 1 : 3.6;
+                if (isDPClim) {
+                    const idxPoste = headers.indexOf('POSTE') !== -1 ? headers.indexOf('POSTE') : headers.indexOf('NUM_POSTE');
+                    const idxDate = headers.indexOf('DATE');
+                    const idxT = headers.indexOf('T');
+                    const idxTN = headers.indexOf('TN');
+                    const idxTX = headers.indexOf('TX');
+                    const idxRR1 = headers.indexOf('RR1');
+                    const idxFF = headers.indexOf('FF');
+                    const idxFXI3S = headers.indexOf('FXI3S');
+                    const idxU = headers.indexOf('U');
+                    const idxVV = headers.indexOf('VV');
 
-                dataLines.forEach(line => {
-                    const cols = line.trim().split(';');
-                    if (cols.length < 5) return;
+                    const parseVal = (cols, idx) => {
+                        if (idx === -1 || idx >= cols.length) return null;
+                        const v = cols[idx];
+                        if (!v || v === '' || v === 'null') return null;
+                        const n = parseFloat(v.replace(',', '.'));
+                        return isNaN(n) ? null : n;
+                    };
 
-                    const rawDate = cols[1]; // YYYYMMDD ou YYYYMMDDHH
-                    if (!rawDate || (rawDate.length !== 8 && rawDate.length !== 10)) return;
+                    lines.slice(1).forEach(line => {
+                        const cols = line.split(';').map(c => c.trim());
+                        if (cols.length < 5) return;
+                        const rawDate = idxDate !== -1 ? cols[idxDate] : '';
+                        if (!rawDate || rawDate.length < 10) return;
 
-                    const year = parseInt(rawDate.substring(0, 4));
-                    const month = parseInt(rawDate.substring(4, 6));
-                    const day = parseInt(rawDate.substring(6, 8));
-                    const hour = rawDate.length === 10 ? parseInt(rawDate.substring(8, 10)) : 12;
+                        const year = parseInt(rawDate.substring(0, 4), 10);
+                        const month = parseInt(rawDate.substring(4, 6), 10);
+                        const day = parseInt(rawDate.substring(6, 8), 10);
+                        const hour = parseInt(rawDate.substring(8, 10), 10);
 
-                    const dateObj = new Date(year, month - 1, day, hour, 0, 0);
-                    const datePure = new Date(year, month - 1, day);
-                    const dateKey = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                        const utcMs = Date.UTC(year, month - 1, day, hour, 0, 0);
+                        const dtUtc = new Date(utcMs);
+                        const frParts = new Intl.DateTimeFormat('fr-FR', {
+                            timeZone: 'Europe/Paris',
+                            year: 'numeric', month: '2-digit', day: '2-digit',
+                            hour: '2-digit', minute: '2-digit', hour12: false
+                        }).formatToParts(dtUtc);
+                        const pVal = (t) => frParts.find(p => p.type === t)?.value || '';
+                        const lYear = pVal('year');
+                        const lMonth = pVal('month');
+                        const lDay = pVal('day');
+                        const lHour = parseInt(pVal('hour'), 10);
 
-                    if (!firstDate || datePure < firstDate) firstDate = datePure;
-                    if (!lastDate || datePure > lastDate) lastDate = datePure;
+                        const dateKey = `${lYear}-${lMonth}-${lDay}`;
+                        const dateObj = new Date(parseInt(lYear, 10), parseInt(lMonth, 10) - 1, parseInt(lDay, 10), lHour, 0, 0);
+                        const datePure = new Date(parseInt(lYear, 10), parseInt(lMonth, 10) - 1, parseInt(lDay, 10));
 
-                    stationId = cols[0];
+                        if (!firstDate || datePure < firstDate) firstDate = datePure;
+                        if (!lastDate || datePure > lastDate) lastDate = datePure;
 
-                    const rr = parseFloat(cols[2]?.replace(',', '.')) || 0;
-                    const tn = parseFloat(cols[3]?.replace(',', '.')) || 99;
-                    const tx = parseFloat(cols[4]?.replace(',', '.')) || -99;
-                    const fxi = (parseFloat(cols[5]?.replace(',', '.')) || 0) * windMultiplier;
+                        if (idxPoste !== -1 && cols[idxPoste]) stationId = cols[idxPoste];
 
-                    let tempVal = (tn !== 99 && tx !== -99) ? (tn + tx) / 2 : (tn !== 99 ? tn : tx);
-                    if (tempVal === 99 || tempVal === -99) tempVal = 0;
+                        const temp = parseVal(cols, idxT);
+                        const tn = parseVal(cols, idxTN);
+                        const tx = parseVal(cols, idxTX);
+                        const rr1 = parseVal(cols, idxRR1) ?? 0;
+                        const ffMS = parseVal(cols, idxFF);
+                        const ffKmh = ffMS !== null ? Math.round(ffMS * 3.6) : null;
+                        const fxi3sMS = parseVal(cols, idxFXI3S);
+                        const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
 
-                    rows.push({
-                        time: dateObj,
-                        dateKey,
-                        h: hour,
-                        temp: tempVal,
-                        tmin: tn !== 99 ? tn : null,
-                        tmax: tx !== -99 ? tx : null,
-                        rain: rr,
-                        w_avg: fxi,
-                        w_gst: fxi,
-                        rawFxi: fxi
+                        let tempVal = temp !== null ? temp : (tx !== null && tn !== null ? parseFloat(((tx + tn) / 2).toFixed(1)) : (tn !== null ? tn : (tx !== null ? tx : 0)));
+
+                        rows.push({
+                            time: dateObj,
+                            dateKey,
+                            h: lHour,
+                            h_local: lHour,
+                            temp: tempVal,
+                            tmin: tn,
+                            tmax: tx,
+                            rain: rr1,
+                            w_avg: ffKmh || (fxiKmh ? Math.round(fxiKmh * 0.6) : 0),
+                            w_gst: fxiKmh || 0,
+                            rawFxi: fxiKmh || 0
+                        });
                     });
-                });
+                } else {
+                    const dataLines = lines.slice(1).filter(l => l.trim().length > 0);
+                    let maxFxiSeen = 0;
+                    dataLines.forEach(line => {
+                        const cols = line.trim().split(';');
+                        if (cols.length >= 6) {
+                            const fxi = parseFloat(cols[5]?.replace(',', '.')) || 0;
+                            if (fxi > maxFxiSeen) maxFxiSeen = fxi;
+                        }
+                    });
+                    const windMultiplier = maxFxiSeen > 40 ? 1 : 3.6;
+
+                    dataLines.forEach(line => {
+                        const cols = line.trim().split(';');
+                        if (cols.length < 5) return;
+
+                        const rawDate = cols[1];
+                        if (!rawDate || (rawDate.length !== 8 && rawDate.length !== 10)) return;
+
+                        const year = parseInt(rawDate.substring(0, 4));
+                        const month = parseInt(rawDate.substring(4, 6));
+                        const day = parseInt(rawDate.substring(6, 8));
+                        const hour = rawDate.length === 10 ? parseInt(rawDate.substring(8, 10)) : 12;
+
+                        const dateObj = new Date(year, month - 1, day, hour, 0, 0);
+                        const datePure = new Date(year, month - 1, day);
+                        const dateKey = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+
+                        if (!firstDate || datePure < firstDate) firstDate = datePure;
+                        if (!lastDate || datePure > lastDate) lastDate = datePure;
+
+                        stationId = cols[0];
+
+                        const rr = parseFloat(cols[2]?.replace(',', '.')) || 0;
+                        const tn = parseFloat(cols[3]?.replace(',', '.')) || 99;
+                        const tx = parseFloat(cols[4]?.replace(',', '.')) || -99;
+                        const fxi = (parseFloat(cols[5]?.replace(',', '.')) || 0) * windMultiplier;
+
+                        let tempVal = (tn !== 99 && tx !== -99) ? (tn + tx) / 2 : (tn !== 99 ? tn : tx);
+                        if (tempVal === 99 || tempVal === -99) tempVal = 0;
+
+                        rows.push({
+                            time: dateObj,
+                            dateKey,
+                            h: hour,
+                            temp: tempVal,
+                            tmin: tn !== 99 ? tn : null,
+                            tmax: tx !== -99 ? tx : null,
+                            rain: rr,
+                            w_avg: fxi,
+                            w_gst: fxi,
+                            rawFxi: fxi
+                        });
+                    });
+                }
 
                 if (rows.length === 0) throw new Error("Aucune donnée valide trouvée dans le fichier.");
 
@@ -629,7 +720,12 @@ const AttestationIntemperieManager = () => {
                 }
                 if (hist.length === 0) {
                     const sName = stationNames[stationId] || stationId;
-                    hist = await weatherAPI.getStationHourlyHistoryRange(stationId, startDate, finalEndDate, (msg) => setStatus(`⏳ [${sName}] ${msg}`));
+                    const yesterdayStr = getYesterdayDate();
+                    let qStart = startDate;
+                    let qEnd = finalEndDate;
+                    if (qEnd > yesterdayStr) qEnd = yesterdayStr;
+                    if (qStart > yesterdayStr) qStart = yesterdayStr;
+                    hist = await weatherAPI.getStationHourlyHistoryRange(stationId, qStart, qEnd, (msg) => setStatus(`⏳ [${sName}] ${msg}`));
                 }
                 return hist || [];
             };
@@ -645,7 +741,7 @@ const AttestationIntemperieManager = () => {
                 const dayMap = {};
                 hist.forEach(obs => {
                     const dt = obs.time instanceof Date ? obs.time : new Date(obs.time);
-                    const dateKey = obs.date || dt.toLocaleDateString('fr-CA');
+                    const dateKey = obs.date_local || obs.date || (obs.time instanceof Date ? obs.time.toLocaleDateString('fr-CA') : dt.toLocaleDateString('fr-CA'));
                     if (dateKey < startDate || dateKey > finalEndDate) return;
                     if (!dayMap[dateKey]) {
                         dayMap[dateKey] = {
@@ -697,12 +793,12 @@ const AttestationIntemperieManager = () => {
 
                 // Alignement précis heure par heure entre stations distinctes (ex: Temp/Pluie Chantonnay + Vent Pouzauges)
                 const allHours = Array.from(new Set([
-                    ...(tDay?.rows || []).map(r => (r.time instanceof Date ? r.time : new Date(r.time)).getHours()),
-                    ...(rDay?.rows || []).map(r => (r.time instanceof Date ? r.time : new Date(r.time)).getHours()),
-                    ...(wDay?.rows || []).map(r => (r.time instanceof Date ? r.time : new Date(r.time)).getHours())
+                    ...(tDay?.rows || []).map(r => r.h_local !== undefined ? r.h_local : (r.time instanceof Date ? r.time : new Date(r.time)).getHours()),
+                    ...(rDay?.rows || []).map(r => r.h_local !== undefined ? r.h_local : (r.time instanceof Date ? r.time : new Date(r.time)).getHours()),
+                    ...(wDay?.rows || []).map(r => r.h_local !== undefined ? r.h_local : (r.time instanceof Date ? r.time : new Date(r.time)).getHours())
                 ])).sort((a, b) => a - b);
 
-                const getRowForHour = (rows, h) => (rows || []).find(r => (r.time instanceof Date ? r.time : new Date(r.time)).getHours() === h);
+                const getRowForHour = (rows, h) => (rows || []).find(r => (r.h_local !== undefined ? r.h_local : (r.time instanceof Date ? r.time : new Date(r.time)).getHours()) === h);
 
                 const combinedRows = (allHours.length > 0 ? allHours : [6, 10, 14, 18]).map(h => {
                     const tRow = getRowForHour(tDay?.rows, h);
