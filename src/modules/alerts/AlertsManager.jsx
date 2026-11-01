@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { Bell, Trash2, Plus, Search, MapPin, Wind, Thermometer, Droplets } from 'lucide-react';
 
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
 
 const AlertsManager = () => {
     const [email, setEmail] = useState(localStorage.getItem('user_email') || '');

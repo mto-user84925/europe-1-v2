@@ -1,19 +1,14 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, useMap, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import html2canvas from 'html2canvas';
 import { Download, RefreshCw, Calendar, Map as MapIcon, Layers } from 'lucide-react';
-import stationNamesData from '../../data/stationNames.json';
-import './RegionalMapGenerator.css';
+import stationNamesData from '../../data/stationNames.json';import './RegionalMapGenerator.css';
 import { CARTO_TILES } from '../../constants/carto';
 
 // --- Configuration ---
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
 
 // Définition des régions et leurs départements
 const REGIONS = {
@@ -102,16 +97,14 @@ const RegionalMapGenerator = () => {
         foudre: { label: "Impacts Foudre ⚡", unit: "Impacts" }
     };
 
+    // stationNames.json est un dictionnaire { idStation: nom }, et non une FeatureCollection.
+    // On construit la table de correspondance à partir de ce dictionnaire.
     const stationsLookup = useMemo(() => {
         const map = {};
-        if (stationsListData && stationsListData.features) {
-            stationsListData.features.forEach(f => {
-                const sid = f.properties.num;
-                map[sid] = {
-                    lat: f.geometry.coordinates[1],
-                    lon: f.geometry.coordinates[0],
-                    name: f.properties.nom
-                };
+        const entries = stationNamesData && (stationNamesData.default || stationNamesData);
+        if (entries && typeof entries === 'object') {
+            Object.entries(entries).forEach(([sid, nom]) => {
+                map[sid] = { name: typeof nom === 'string' ? nom : nom?.nom, isKnown: true };
             });
         }
         return map;
@@ -469,8 +462,9 @@ const RegionalMapGenerator = () => {
                                 ];
                                 const color = HOUR_COLORS[s.h] || '#ff0000';
 
-                                // On utilise CircleMarker de Leaflet qui est vectoriel et performant
-                                const { CircleMarker } = React.useMemo(() => require('react-leaflet'), []);
+                                // CircleMarker est importé statiquement en haut du fichier
+                                // (auparavant : require('react-leaflet') dans un useMemo au sein du .map(),
+                                //  ce qui violait les règles des Hooks et échouait en ESM).
 
                                 return (
                                     <CircleMarker
@@ -493,8 +487,8 @@ const RegionalMapGenerator = () => {
                                 if (sid.length === 7) sid = "0" + sid;
                                 
                                 const meta = stationsLookup[sid];
-                                const lat = meta?.lat || station.lat;
-                                const lon = meta?.lon || station.lon;
+                                const lat = station.lat ?? meta?.lat;
+                                const lon = station.lon ?? meta?.lon;
                                 
                                 if (!lat || !lon) return null;
 

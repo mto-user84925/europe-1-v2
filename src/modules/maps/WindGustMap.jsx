@@ -876,7 +876,7 @@ const WindGustMap = () => {
                             {windMode === 'direct' ? (
                                 "Données issues des stations automatiques du réseau Météo-France en temps réel (mesures sur les 6 dernières minutes). La valeur affichée est la rafale ou vitesse moyenne maximale enregistrée récemment."
                             ) : (
-                                "Données issues des stations automatiques du réseau Météo-France. La valeur affichée est la rafale maximale (FXI) enregistrée par département sur la journée."
+                                "Données issues des stations automatiques du réseau Météo-France. La valeur affichée est la rafale maximale (FXI3S) enregistrée par département sur la journée."
                             )}
                         </p>
                     </div>

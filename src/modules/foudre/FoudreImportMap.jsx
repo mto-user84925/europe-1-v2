@@ -32,7 +32,7 @@ function MapController({ center, zoom }) {
 }
 
 const FoudreImportMap = () => {
-    const [strikes, setStrikes] = undefined ? useState([]) : useState([]);
+    const [strikes, setStrikes] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [proj4Loaded, setProj4Loaded] = useState(false);

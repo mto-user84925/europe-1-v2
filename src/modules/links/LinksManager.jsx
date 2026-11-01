@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import {
     Link as LinkIcon,
     Plus,
@@ -17,10 +16,7 @@ import {
 } from 'lucide-react';
 import './LinksManager.css';
 
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
 
 const LinksManager = () => {
     const [links, setLinks] = useState([]);

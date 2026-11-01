@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, GeoJSON, Circle } from 'react-leaflet';
-import { createClient } from '@supabase/supabase-js';
 import 'leaflet/dist/leaflet.css';
 import { Zap, Search, X, Crosshair, RefreshCw, Calendar, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';

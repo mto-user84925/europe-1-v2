@@ -184,9 +184,19 @@ export default function MonthlyClimateTable({ stationId, stationName }) {
             rainDays: valids.filter(d => d.rr >= 1.0).length,
             frostDays: valids.filter(d => d.tn !== null && d.tn <= 0.0).length,
             heatDays: valids.filter(d => d.tx !== null && d.tx >= 25.0).length,
-            maxGust: maxWind
+            maxGust: maxWind,
+            // Drapeaux de capacités du poste : un poste peut ne pas être équipé
+            // d'un thermomètre / pluviomètre / anémomètre.
+            hasTemp: valids.some(d => d.tx !== null || d.tn !== null || d.tm !== null),
+            hasRain: valids.some(d => typeof d.rr === 'number' && !isNaN(d.rr)),
+            hasWind: valids.some(d => d.fxi !== null)
         };
     }, [monthlyData]);
+
+    // Raccourcis pour le rendu : le poste mesure-t-il chaque paramètre ?
+    const hasTemp = stats?.hasTemp ?? false;
+    const hasRain = stats?.hasRain ?? false;
+    const hasWind = stats?.hasWind ?? false;
 
     const exportCSV = () => {
         if (!monthlyData.length) return;

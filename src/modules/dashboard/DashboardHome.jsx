@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
 import {
     Thermometer, Wind, Droplets, Map, Zap,
     ShieldAlert, Search, ArrowRight, Activity,
@@ -10,10 +9,7 @@ import { DEPARTMENTS, REGIONS } from '../../data/departments';
 import stationNames from '../../data/stationNames.json';
 import './DashboardHome.css';
 
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
 
 // OFFICIAL MF COLORS
 const VIGILANCE_COLORS = {

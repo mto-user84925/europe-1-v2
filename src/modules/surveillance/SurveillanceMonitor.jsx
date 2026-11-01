@@ -62,16 +62,6 @@ export default function SurveillanceMonitor({ type }) {
         const isLower = config.operator === '<=';
 
         if (isLower) {
-            if (val <= config.levels[2]) status = 'extreme';
-            else if (val <= config.levels[1]) status = 'high';
-            else if (val <= config.levels[0]) status = 'moderate';
-        } else {
-            if (val >= config.levels[2]) status = 'extreme';
-            else if (val >= config.levels[1]) status = 'high';
-            else if (val >= config.levels[0]) status = 'moderate';
-        }
-        return status;
-        if (isLower) {
             if (config.extreme && val <= config.extreme) status = 'extreme-purple'; // Special purple for Gel
             else if (val <= config.levels[2]) status = 'extreme';
             else if (val <= config.levels[1]) status = 'high';

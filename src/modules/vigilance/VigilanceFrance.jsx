@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { geoConicConformal, geoPath } from "d3-geo";
 import {
     Droplets, Waves, Wind, Zap, Snowflake, Info, Thermometer, Flame,
@@ -9,10 +8,7 @@ import {
 import './VigilanceFrance.css';
 import VigilanceSocialCard from './VigilanceSocialCard';
 
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
 
 // OFFICIAL MF COLORS
 const OFFICIAL_COLORS = {

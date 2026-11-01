@@ -1,12 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { Check, Trash2, AlertTriangle, RefreshCw, Thermometer, Wind, CloudRain, MapPin } from 'lucide-react';
 import stationNames from '../../data/stationNames.json';
 
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
 
 // Helper to format date
 const formatDate = (ts) => {

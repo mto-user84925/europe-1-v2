@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { Search, MapPin, Navigation, Wind, Thermometer, Droplets, ArrowRight } from 'lucide-react';
 
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
 
 // Composant pour afficher une valeur avec son unité et sa station source, plus l'heure du relevé
 const SmartValue = ({ icon: Icon, label, value, unit, station, distance, color, time }) => {

@@ -308,7 +308,7 @@ const StationArchives = () => {
                     </div>
                     <div>
                         <h1>Archives Climatologiques Météo-France</h1>
-                        <p>Historique officiel certifié (1950 à hier) : Pluie (RR), Températures (TN, TX, TM), Rafales (FXI) et Phénomènes.</p>
+                        <p>Historique officiel certifié (1950 à hier) : Pluie (RR), Températures (TN, TX, TM), Rafales (FXI3S) et Phénomènes.</p>
                     </div>
                 </div>
                 <div className="header-badges">

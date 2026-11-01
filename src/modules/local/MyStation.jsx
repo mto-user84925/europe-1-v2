@@ -1,18 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import {
     MapPin, Search, Bell, Wind, Thermometer, Droplets, Zap,
     Trash2, Plus, Home, ShieldCheck, RefreshCw, Radio, UserPlus, LogIn, Check, FolderOpen
 } from 'lucide-react';
 import './MyStation.css';
 
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
+
+// Clé locale identifiant l'installation (et non plus un « topic » partagé).
+const CLIENT_ID_KEY = 'my_station_client_id';
+
+const getOrCreateClientId = () => {
+    try {
+        const existing = localStorage.getItem(CLIENT_ID_KEY);
+        if (existing) return existing;
+        const generated = (crypto?.randomUUID?.() || `client_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+        localStorage.setItem(CLIENT_ID_KEY, generated);
+        return generated;
+    } catch (e) {
+        return `client_${Date.now()}`;
+    }
+};
 
 const MyStation = () => {
-    const [ntfyTopic, setNtfyTopic] = useState(localStorage.getItem('my_ntfy_topic') || 'client_demo');
+    const [clientId] = useState(getOrCreateClientId);
+    const [ntfyTopic, setNtfyTopic] = useState(() => localStorage.getItem('my_ntfy_topic') || '');
     const [configs, setConfigs] = useState([]);
     const [liveData, setLiveData] = useState({}); // { station_id: { t, ff, rr_per, ts } }
     const [allClients, setAllClients] = useState([]);
@@ -23,7 +35,7 @@ const MyStation = () => {
     const [suggestions, setSuggestions] = useState([]);
 
     useEffect(() => {
-        localStorage.setItem('my_ntfy_topic', ntfyTopic);
+        if (ntfyTopic) localStorage.setItem('my_ntfy_topic', ntfyTopic);
         fetchConfigs();
         fetchAllClients();
     }, [ntfyTopic]);
@@ -37,13 +49,23 @@ const MyStation = () => {
         }
     }, [configs]);
 
+    // Lecture des configurations rattachées à CETTE installation (client_id),
+    // et non plus à un « topic » deviné ou énumérable.
     const fetchConfigs = async () => {
         setLoading(true);
         try {
-            const { data } = await supabase.from('user_station_configs').select('*').eq('ntfy_topic', ntfyTopic).order('created_at', { ascending: false });
+            const { data, error } = await supabase
+                .from('user_station_configs')
+                .select('*')
+                .eq('client_id', clientId)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
             setConfigs(data || []);
-        } catch (e) { console.error(e); }
-        finally { setLoading(false); }
+        } catch (e) {
+            console.error('[MyStation] fetchConfigs:', e);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const fetchLiveMeasurements = async () => {
@@ -69,9 +91,15 @@ const MyStation = () => {
         } catch (e) { console.error("Live fetch error", e); }
     };
 
+    // Liste des dossiers (topics) de CETTE installation uniquement.
+    // Auparavant : select('ntfy_topic') sans filtre exposait tous les clients.
     const fetchAllClients = async () => {
         try {
-            const { data } = await supabase.from('user_station_configs').select('ntfy_topic');
+            const { data, error } = await supabase
+                .from('user_station_configs')
+                .select('ntfy_topic')
+                .eq('client_id', clientId);
+            if (error) throw error;
             if (data) {
                 const grouped = data.reduce((acc, curr) => {
                     if (!acc[curr.ntfy_topic]) acc[curr.ntfy_topic] = { topic: curr.ntfy_topic, count: 0 };
@@ -79,8 +107,13 @@ const MyStation = () => {
                     return acc;
                 }, {});
                 setAllClients(Object.values(grouped));
+            } else {
+                setAllClients([]);
             }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error('[MyStation] fetchAllClients:', e);
+            setAllClients([]);
+        }
     };
 
     const handleNewClient = () => {
@@ -99,7 +132,8 @@ const MyStation = () => {
         try {
             const { data: stData } = await supabase.rpc('find_nearest_stations', { lat_input: lat, lon_input: lon, limit_count: 1 });
             const newConfig = {
-                ntfy_topic: ntfyTopic,
+                client_id: clientId,
+                ntfy_topic: ntfyTopic || clientId,
                 city_name: feature.properties.city || feature.properties.name,
                 lat, lon, zip_code: feature.properties.postcode,
                 nearest_station_id: stData?.[0]?.id || null,
@@ -119,20 +153,35 @@ const MyStation = () => {
 
     const updateConfig = async (configId, updates) => {
         setConfigs(prev => prev.map(c => c.id === configId ? { ...c, ...updates } : c));
-        await supabase.from('user_station_configs').update(updates).eq('id', configId);
+        const { error } = await supabase
+            .from('user_station_configs')
+            .update(updates)
+            .eq('id', configId)
+            .eq('client_id', clientId);
+        if (error) console.error('[MyStation] updateConfig:', error);
     };
 
     const deleteConfig = async (id) => {
         if (!confirm("Supprimer cette ville ?")) return;
-        await supabase.from('user_station_configs').delete().eq('id', id);
+        const { error } = await supabase
+            .from('user_station_configs')
+            .delete()
+            .eq('id', id)
+            .eq('client_id', clientId);
+        if (error) console.error('[MyStation] deleteConfig:', error);
         fetchConfigs();
         fetchAllClients();
     };
 
     const deleteDossier = async (topic) => {
         if (!confirm(`⚠️ SUPPRESSION TOTALE : dossier "${topic}" ?`)) return;
-        await supabase.from('user_station_configs').delete().eq('ntfy_topic', topic);
-        if (ntfyTopic === topic) setNtfyTopic('client_demo');
+        const { error } = await supabase
+            .from('user_station_configs')
+            .delete()
+            .eq('ntfy_topic', topic)
+            .eq('client_id', clientId);
+        if (error) console.error('[MyStation] deleteDossier:', error);
+        if (ntfyTopic === topic) setNtfyTopic('');
         fetchConfigs();
         fetchAllClients();
     };

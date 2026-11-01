@@ -10,6 +10,7 @@ import { fetchDepartementsGeoJSON } from '../../services/vigicruuesService';
 import { MAIN_CITIES } from "../../data/mainCities";
 import { LIGHTNING_DESIGNS } from '../foudre/LightningStyles';
 import { CARTO_TILES } from '../../constants/carto';
+import { supabase } from '../../services/supabaseClient';
 import './SupervisionMap.css';
 
 const HOUR_COLORS = [
@@ -69,11 +70,18 @@ const FastLightningLayer = ({ strikes, colors, designId = 'Classic' }) => {
     const requestRef = useRef();
     const lastDrawRef = useRef(0);
 
-    // ponytail: stocke les props dans des refs pour que la boucle RAF les lise à jour sans recréer le canvas ni relancer l'effet
+    // Refs synchronisées via useEffect (voir plus bas) pour la boucle RAF.
     const strikesRef = useRef(strikes);
     const designIdRef = useRef(designId);
-    strikesRef.current = strikes;
-    designIdRef.current = designId;
+
+    // Synchronisation des refs APRÈS le rendu (jamais pendant).
+    useEffect(() => {
+        strikesRef.current = strikes;
+    }, [strikes]);
+
+    useEffect(() => {
+        designIdRef.current = designId;
+    }, [designId]);
 
     useEffect(() => {
         if (!canvasRef.current) {

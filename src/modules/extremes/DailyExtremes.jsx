@@ -1,16 +1,12 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
 import { Download, Table, ArrowUpDown, Loader, Settings, FileText, X, ChevronLeft, ChevronRight, Mountain, Wind, Droplets, Thermometer, Calendar, Trophy } from 'lucide-react';
 import stationNamesData from '../../data/stationNames.json';
 import stationsMetadata from '../../data/stationsMetadata.json';
 import { DEPARTMENTS, REGIONS } from '../../data/departments.js';
 import './DailyExtremes.css';
 
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
 
 const DailyExtremes = () => {
     const navigate = useNavigate();

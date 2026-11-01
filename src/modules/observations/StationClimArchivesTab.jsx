@@ -152,9 +152,18 @@ export default function StationClimArchivesTab({ stationId, stationName }) {
             minTn: minTn.val !== 999 ? minTn : null,
             maxTx: maxTx.val !== -999 ? maxTx : null,
             maxWind: maxWind.val !== -1 ? maxWind : null,
-            totalDays: data.length
+            totalDays: data.length,
+            // Drapeaux de capacités du poste (thermomètre / pluviomètre / anémomètre)
+            hasTemp: data.some(d => d.tn != null || d.tx != null || d.tm != null),
+            hasRain: data.some(d => d.rr != null),
+            hasWind: data.some(d => d.fxi != null)
         };
     }, [data]);
+
+    // Raccourcis de rendu
+    const hasTemp = stats?.hasTemp ?? false;
+    const hasRain = stats?.hasRain ?? false;
+    const hasWind = stats?.hasWind ?? false;
 
     const filteredData = useMemo(() => {
         if (!searchTerm) return data;

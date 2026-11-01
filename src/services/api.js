@@ -4,10 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 // URL RELATIVE pour passer par le Proxy Vite (contourne CORS)
 const MF_BASE_URL = '/api-meteo';
 
-// Client Supabase
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+import { supabase } from './supabaseClient';
+export { supabase };
 
 const _stationHistoryCache = new Map();
 const _STATION_CACHE_MAX_ENTRIES = 60;

@@ -4,16 +4,12 @@ import { Play, ChevronRight, Clock, Globe, Map as MapIcon, Layers, Square, Downl
 import html2canvas from 'html2canvas';
 import gifshot from 'gifshot';
 import L from 'leaflet';
-import { createClient } from '@supabase/supabase-js';
 import 'leaflet/dist/leaflet.css';
 import './RadarFrance.css';
 import { MAIN_CITIES } from "../../data/mainCities";
 import { CARTO_TILES } from '../../constants/carto';
 
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../../services/supabaseClient';
 
 // Fix pour les icônes Leaflet par défaut
 delete L.Icon.Default.prototype._getIconUrl;

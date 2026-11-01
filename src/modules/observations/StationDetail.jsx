@@ -655,7 +655,7 @@ export default function StationDetail() {
                         {/* CARTE RAFALE */}
                         <div className="climat-pro-card orange-theme">
                             <div className="card-top">
-                                <span className="card-title">Rafale Maximale (FXI)</span>
+                                <span className="card-title">Rafale Maximale (FXI3S)</span>
                                 <Wind size={20} className="icon-badge orange" />
                             </div>
                             <div className="main-metric">
