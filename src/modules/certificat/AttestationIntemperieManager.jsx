@@ -560,6 +560,7 @@ const AttestationIntemperieManager = () => {
                 const fVal = row.rawFxi || row.w_gst || 0;
                 if (fVal > csvDays[k].fxiMax) {
                     csvDays[k].fxiMax = fVal;
+                    csvDays[k].fxiTime = `${row.h}h`;
                 }
             });
 
@@ -588,7 +589,9 @@ const AttestationIntemperieManager = () => {
                             tmax,
                             rainTotal,
                             gustMax,
-                            gustTime
+                            gustTime,
+                            fxiMax: mergeOptionWind ? (cd.fxiMax || cd.gustMax) : 0,
+                            fxiTime: mergeOptionWind ? (cd.fxiTime || cd.gustTime || 'N/A') : 'N/A'
                         }
                     };
                 });
@@ -648,7 +651,9 @@ const AttestationIntemperieManager = () => {
                                 tmax: mergeOptionTemp ? (cd.tmax !== -99 ? cd.tmax : 0) : 0,
                                 rainTotal: mergeOptionRain ? cd.rainTotal : 0,
                                 gustMax: mergeOptionWind ? cd.gustMax : 0,
-                                gustTime: mergeOptionWind ? cd.gustTime : 'N/A'
+                                gustTime: mergeOptionWind ? cd.gustTime : 'N/A',
+                                fxiMax: mergeOptionWind ? (cd.fxiMax || cd.gustMax) : 0,
+                                fxiTime: mergeOptionWind ? (cd.fxiTime || cd.gustTime || 'N/A') : 'N/A'
                             }
                         };
                     }
@@ -808,6 +813,7 @@ const AttestationIntemperieManager = () => {
                     }
                     if (gfxi > dayMap[dateKey].fxiMax) {
                         dayMap[dateKey].fxiMax = gfxi;
+                        dayMap[dateKey].fxiTime = hStr;
                     }
                     dayMap[dateKey].rows.push({
                         ...obs,
@@ -875,7 +881,8 @@ const AttestationIntemperieManager = () => {
                         rainMaxTime: rDay ? rDay.rainMaxTime : '',
                         gustMax: wDay ? wDay.gustMax : 0,
                         gustTime: wDay ? wDay.gustTime : 'N/A',
-                        fxiMax: wDay ? (wDay.fxiMax || wDay.gustMax) : 0
+                        fxiMax: wDay ? (wDay.fxiMax || wDay.gustMax) : 0,
+                        fxiTime: wDay ? (wDay.fxiTime || wDay.gustTime || 'N/A') : 'N/A'
                     }
                 };
             });
@@ -1175,6 +1182,7 @@ const AttestationIntemperieManager = () => {
                                         </td>
                                         <td style="border:1px solid #000; font-weight:bold; color:${(s.fxiMax || s.gustMax) >= 60 ? '#dc2626' : '#1e293b'};">
                                             ${Math.round(s.fxiMax || s.gustMax)} km/h
+                                            ${s.fxiTime && s.fxiTime !== 'N/A' ? `<span style="font-size:6.5pt; color:#64748b;"><br/>(${s.fxiTime})</span>` : ''}
                                         </td>
                                     </tr>
                                 `;
@@ -1259,6 +1267,7 @@ const AttestationIntemperieManager = () => {
                                         </td>
                                         <td style="border:1px solid #000; ${(s.fxiMax || s.gustMax) >= 60 ? 'color:#dc2626; font-weight:bold;' : ''}">
                                             ${Math.round(s.fxiMax || s.gustMax)}
+                                            ${s.fxiTime && s.fxiTime !== 'N/A' ? `<span style="font-size:6.5pt; font-weight:normal; color:#64748b;"><br/>${s.fxiTime}</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${dayIsKo ? '<strong>INTEMPÉRIE</strong>' : '<span style="color:#64748b;">RAS</span>'}

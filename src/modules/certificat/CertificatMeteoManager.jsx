@@ -750,6 +750,7 @@ const CertificatMeteoManager = () => {
 
                 // Calculer les stats globales pour le certificat
                 const windMaxRow = rows.reduce((prev, curr) => (Number(prev.w_gst) >= Number(curr.w_gst) ? prev : curr), rows[0]);
+                const fxiMaxRow = rows.reduce((prev, curr) => (Number(prev.w_fxi || prev.w_gst || 0) >= Number(curr.w_fxi || curr.w_gst || 0) ? prev : curr), rows[0]);
                 const rainMaxRow = rows.reduce((prev, curr) => (Number(prev.rain) >= Number(curr.rain) ? prev : curr), rows[0]);
                 const tempMaxRow = rows.reduce((prev, curr) => (Number(prev.tmax !== null ? prev.tmax : prev.temp) >= Number(curr.tmax !== null ? curr.tmax : curr.temp) ? prev : curr), rows[0]);
                 const tempMinRow = rows.reduce((prev, curr) => (Number(prev.tmin !== null ? prev.tmin : prev.temp) <= Number(curr.tmin !== null ? curr.tmin : curr.temp) ? prev : curr), rows[0]);
@@ -763,6 +764,8 @@ const CertificatMeteoManager = () => {
                     snowTotal: rows.reduce((acc, r) => acc + (Number(r.temp) <= 0 ? (Number(r.rain) || 0) : 0), 0),
                     windGustMax: windMaxRow.w_gst,
                     windGustMaxTime: windMaxRow.time,
+                    windFxiMax: fxiMaxRow ? (fxiMaxRow.w_fxi || fxiMaxRow.w_gst || 0) : windMaxRow.w_gst,
+                    windFxiMaxTime: fxiMaxRow ? fxiMaxRow.time : windMaxRow.time,
                     windAvgMax: Math.max(...rows.map(r => Number(r.w_avg) || 0)),
                     rainMaxH: rainMaxRow.rain,
                     rainMaxTime: rainMaxRow.time,
