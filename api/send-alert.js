@@ -1,11 +1,27 @@
 import { Resend } from 'resend';
 
-// Initialisation avec votre clé
-const resend = new Resend('re_E1j1QCw2_CdpvkHST1mHyWkPCCEzTnf7j');
+/**
+ * Envoi d'alertes e-mail.
+ *
+ * Sécurité : la clé Resend et le secret partagé proviennent UNIQUEMENT de
+ * l'environnement (RESEND_API_KEY / ALERT_SECRET). Aucune valeur en dur.
+ *
+ * Le HTML est construit avec événement échappés (anti-injection XSS dans l'e-mail).
+ */
+
+const escapeHtml = (value) =>
+    String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 
 export default async function handler(req, res) {
     const { secret } = req.query;
-    if (secret !== 'meteo-alert-secure-token-2026') {
+
+    // Comparaison stricte en échec fermé : sans ALERT_SECRET configuré, on refuse.
+    if (!process.env.ALERT_SECRET || secret !== process.env.ALERT_SECRET) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -13,25 +29,34 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { station, value, time, to_email } = req.body;
+    if (!process.env.RESEND_API_KEY) {
+        return res.status(500).json({ error: 'Server misconfigured', details: 'RESEND_API_KEY missing' });
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    const { station, value, time, to_email } = req.body || {};
 
     if (!to_email) {
         return res.status(400).json({ error: 'Missing to_email' });
     }
 
-    // Détection du type d'alerte "intelligente" basée sur l'unité ou la clé (simplifié ici car on reçoit la valeur brute)
-    // On va essayer de deviner le contexte ou l'ajouter dans le body depuis le SQL si on veut être parfait.
-    // Pour l'instant, faisons un template générique mais joli.
+    // Formatage Heure (tolérant aux dates invalides)
+    const parsed = time ? new Date(time) : new Date();
+    const safeDate = isNaN(parsed.getTime()) ? new Date() : parsed;
+    const dateStr = safeDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const timeStr = safeDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-    // Formatage Heure
-    const dateStr = new Date(time).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    const timeStr = new Date(time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const stationSafe = escapeHtml(station);
+    const valueSafe = escapeHtml(value);
+    const dateSafe = escapeHtml(dateStr);
+    const timeSafe = escapeHtml(timeStr);
 
     try {
         const data = await resend.emails.send({
             from: 'Meteo Alert <onboarding@resend.dev>',
             to: [to_email],
-            subject: `🚨 ALERTE MÉTÉO à ${station}`,
+            subject: `🚨 ALERTE MÉTÉO à ${stationSafe}`,
             html: `
         <!DOCTYPE html>
         <html>
@@ -54,15 +79,15 @@ export default async function handler(req, res) {
                         <table style="width: 100%; border-collapse: collapse;">
                             <tr>
                                 <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Station</td>
-                                <td style="padding: 8px 0; color: #111827; font-weight: 600; text-align: right;">${station}</td>
+                                <td style="padding: 8px 0; color: #111827; font-weight: 600; text-align: right;">${stationSafe}</td>
                             </tr>
                             <tr>
                                 <td style="padding: 8px 0; color: #6b7280; font-size: 14px; border-top: 1px solid #e5e7eb;">Valeur Relevée</td>
-                                <td style="padding: 8px 0; color: #ef4444; font-weight: 800; font-size: 18px; text-align: right; border-top: 1px solid #e5e7eb;">${value}</td>
+                                <td style="padding: 8px 0; color: #ef4444; font-weight: 800; font-size: 18px; text-align: right; border-top: 1px solid #e5e7eb;">${valueSafe}</td>
                             </tr>
                             <tr>
                                 <td style="padding: 8px 0; color: #6b7280; font-size: 14px; border-top: 1px solid #e5e7eb;">Date & Heure</td>
-                                <td style="padding: 8px 0; color: #111827; font-weight: 600; text-align: right; border-top: 1px solid #e5e7eb;">${dateStr} à ${timeStr}</td>
+                                <td style="padding: 8px 0; color: #111827; font-weight: 600; text-align: right; border-top: 1px solid #e5e7eb;">${dateSafe} à ${timeSafe}</td>
                             </tr>
                         </table>
                     </div>

@@ -1,14 +1,25 @@
 export default async function handler(req, res) {
-    if (req.headers.get('Authorization') !== `Bearer ${process.env.CRON_SECRET}` && !process.env.IS_LOCAL) {
-        // Validation secrète pour Vercel
+    // Échec fermé : sans CRON_SECRET valide, la requête est rejetée.
+    // Cet endpoint LIT puis SUPPRIME des observations : il ne doit jamais être public.
+    const auth = req.headers.get('Authorization') || req.headers.get('authorization');
+    if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceKey) {
+        return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
     }
 
     try {
         const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_SERVICE_ROLE_KEY);
+        const supabase = createClient(supabaseUrl, serviceKey);
 
-        // On archive et supprime les données d'il y a 2 jours
-        const targetDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        // On archive et supprime les données d'il y a 2 jours (date locale)
+        const d = new Date();
+        d.setDate(d.getDate() - 2);
+        const targetDate = d.toLocaleDateString('sv-SE');
         console.log(`[CRON] Archivage pour la date : ${targetDate}`);
 
         const BATCH_SIZE = 10000;

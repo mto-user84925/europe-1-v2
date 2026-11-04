@@ -1,8 +1,14 @@
-# Proxy pour Météo France - Observations Standard
-/api-meteo/*  https://public-api.meteofrance.fr/public/DPObs/v1/:splat  200
+# Proxys (Netlify). ⚠️ La production est sur Vercel — voir vercel.json.
+# Ce fichier doit rester synchrone avec vercel.json et netlify.toml.
 
-# Proxy pour Météo France - Paquets 6mn
-/api-meteo-paquet/*  https://public-api.meteofrance.fr/public/DPPaquetObs/v1/:splat  200
+/api-meteo/*            https://public-api.meteofrance.fr/public/DPObs/v1/:splat         200
+/api-meteo-paquet/*     https://public-api.meteofrance.fr/public/DPPaquetObs/v1/:splat    200
+/api-meteo-poste/*      https://public-api.meteofrance.fr/public/DPAI01/v1/:splat         200
+/api-meteo-clim/*       https://public-api.meteofrance.fr/public/DPClim/v1/:splat         200
+/api-radar-mf/*         https://public-api.meteofrance.fr/public/DPPaquetRadar/v1/:splat  200
+/api-meteociel/*        https://www.meteociel.fr/:splat                                   200
+/api-agate/*            https://www.mwattest.fr/:splat                                    200
+/ORAGE/*                https://www.mwattest.fr/ORAGE/:splat                              200
 
-# Pour supporter le routage React (SPA)
-/*  /index.html  200
+# Routage SPA — doit rester en dernier
+/*                      /index.html                                                      200

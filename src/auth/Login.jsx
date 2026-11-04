@@ -18,20 +18,8 @@ export default function Login() {
         setLoading(true);
 
         try {
-            // Logic to handle "Douai" username
-            // Supabase requires email, so we map "Douai" to a simulated email
-            // CAUTION: You must create this user in your Supabase project!
-            // Email: contact@douai.fr (or whatever you choose)
-            // Password: Meteoclimatpro
-
-            let emailToUse = username;
-            if (username.toLowerCase() === 'douai') {
-                emailToUse = 'contact@douai.fr'; // Convention
-            }
-
-            // user requested Supabase, so we try Supabase first.
-
-            const { error } = await login(emailToUse, password);
+            // Connexion via Supabase Auth uniquement (aucun identifiant en dur).
+            const { error } = await login(username.trim(), password);
 
             if (error) throw error;
 

@@ -281,23 +281,14 @@ const AttestationIntemperieManager = () => {
 
             const candidates = dists.filter(s => s.id !== selectedStationId).slice(0, 4);
 
-            const enriched = await Promise.all(candidates.map(async (s) => {
-                try {
-                    const sHistory = await weatherAPI.getStationHourlyHistoryRange(s.id, start, end);
-                    if (!sHistory || sHistory.length === 0) return null;
-
-                    const stats = {
-                        maxGust: Math.max(...sHistory.map(h => h.gust || 0)),
-                        rainTotal: sHistory.reduce((acc, h) => acc + (h.rain || 0), 0),
-                        tmin: Math.min(...sHistory.map(h => h.temp || 99)),
-                        tmax: Math.max(...sHistory.map(h => h.temp || -99))
-                    };
-
-                    return { id: s.id, name: s.name, dist: s.dist_km, stats };
-                } catch (e) { return null; }
+            const enriched = candidates.map(s => ({
+                id: s.id,
+                name: s.name,
+                dist: s.dist_km,
+                stats: { maxGust: '-', rainTotal: '-', tmin: '-', tmax: '-' }
             }));
 
-            setNearbyStations(enriched.filter(s => s !== null));
+            setNearbyStations(enriched);
         } catch (e) { console.error(e); }
     };
 
@@ -744,9 +735,14 @@ const AttestationIntemperieManager = () => {
 
             const fetchHistoryForStation = async (stationId) => {
                 let hist = [];
-                if (isSingleDayToday) {
+                const sName = stationNames[stationId] || stationId;
+                hist = await weatherAPI.getStationHourlyHistoryRange(stationId, startDate, finalEndDate, (msg) => setStatus(`⏳ [${sName}] ${msg}`));
+
+                // Repli 6mn si aujourd'hui et DPClim vide
+                if ((!hist || hist.length === 0) && isSingleDayToday) {
                     const day6mn = await weatherAPI.getStation6mnHistory(stationId, new Date(startDate));
                     if (day6mn && day6mn.length > 0) {
+                        hist = [];
                         for (let h = 0; h < 24; h++) {
                             const sub = day6mn.filter(d => d.time.getHours() === h);
                             if (sub.length > 0) {
@@ -756,21 +752,14 @@ const AttestationIntemperieManager = () => {
                                     rain: sub.reduce((acc, d) => acc + (d.rain || 0), 0),
                                     wind: Math.max(...sub.map(d => d.wind || 0)),
                                     gust: Math.max(...sub.map(d => d.gust || 0)),
+                                    fxi3s: Math.max(...sub.map(d => d.gust || 0)),
+                                    fxi: Math.max(...sub.map(d => d.gust || 0)),
                                     hum: sub[sub.length - 1].hum,
                                     pres: sub[sub.length - 1].pressure
                                 });
                             }
                         }
                     }
-                }
-                if (hist.length === 0) {
-                    const sName = stationNames[stationId] || stationId;
-                    const yesterdayStr = getYesterdayDate();
-                    let qStart = startDate;
-                    let qEnd = finalEndDate;
-                    if (qEnd > yesterdayStr) qEnd = yesterdayStr;
-                    if (qStart > yesterdayStr) qStart = yesterdayStr;
-                    hist = await weatherAPI.getStationHourlyHistoryRange(stationId, qStart, qEnd, (msg) => setStatus(`⏳ [${sName}] ${msg}`));
                 }
                 return hist || [];
             };
@@ -800,20 +789,23 @@ const AttestationIntemperieManager = () => {
                             rainMaxTime: '',
                             gustMax: 0,
                             gustTime: '',
-                            fxiMax: 0
+                            fxiMax: 0,
+                            fxiTime: ''
                         };
                     }
                     const t = (obs.temp !== undefined && obs.temp !== null && !isNaN(obs.temp) && obs.temp > -90) ? obs.temp : null;
                     const d = new Date(obs.time);
-                    const hStr = `${String(obs.h_local !== undefined ? obs.h_local : d.getHours()).padStart(2, '0')}h${String(d.getMinutes() || 0).padStart(2, '0')}`;
+                    const rowH = obs.h_local !== undefined ? obs.h_local : d.getHours();
+                    const hStr = `${String(rowH).padStart(2, '0')}h00`;
+
                     if (t !== null) {
                         if (t < dayMap[dateKey].tmin) {
                             dayMap[dateKey].tmin = t;
-                            dayMap[dateKey].tminTime = hStr;
+                            dayMap[dateKey].tminTime = obs.htn_time || hStr;
                         }
                         if (t > dayMap[dateKey].tmax) {
                             dayMap[dateKey].tmax = t;
-                            dayMap[dateKey].tmaxTime = hStr;
+                            dayMap[dateKey].tmaxTime = obs.htx_time || hStr;
                         }
                     }
                     const r = Number(obs.rain) || 0;
@@ -824,18 +816,24 @@ const AttestationIntemperieManager = () => {
                     }
                     const g3s = obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s : (obs.gust || obs.w_gst || 0);
                     const gfxi = obs.fxi !== undefined && obs.fxi !== null ? obs.fxi : (obs.rawFxi || g3s);
-                    if (g3s > dayMap[dateKey].gustMax) {
-                        dayMap[dateKey].gustMax = g3s;
-                        dayMap[dateKey].gustTime = hStr;
+                    const g3sRound = Math.round(g3s);
+                    const gfxiRound = Math.round(gfxi);
+
+                    if (g3sRound > dayMap[dateKey].gustMax) {
+                        dayMap[dateKey].gustMax = g3sRound;
+                        dayMap[dateKey].gustTime = obs.hfxi3s_time || hStr;
                     }
-                    if (gfxi > dayMap[dateKey].fxiMax) {
-                        dayMap[dateKey].fxiMax = gfxi;
-                        dayMap[dateKey].fxiTime = hStr;
+                    if (gfxiRound > dayMap[dateKey].fxiMax) {
+                        dayMap[dateKey].fxiMax = gfxiRound;
+                        dayMap[dateKey].fxiTime = obs.hfxi_time || obs.hfxi3s_time || hStr;
                     }
                     dayMap[dateKey].rows.push({
                         ...obs,
-                        fxi3s: g3s,
-                        rawFxi: gfxi
+                        h: rowH,
+                        h_local: rowH,
+                        w_gst: g3sRound,
+                        fxi3s: g3sRound,
+                        rawFxi: gfxiRound
                     });
                 });
                 return dayMap;
@@ -862,7 +860,6 @@ const AttestationIntemperieManager = () => {
                 const rDay = rainDays[dateKey];
                 const wDay = windDays[dateKey];
 
-                // Alignement précis heure par heure entre stations distinctes (ex: Temp/Pluie Chantonnay + Vent Pouzauges)
                 const allHours = Array.from(new Set([
                     ...(tDay?.rows || []).map(r => r.h_local !== undefined ? r.h_local : (r.time instanceof Date ? r.time : new Date(r.time)).getHours()),
                     ...(rDay?.rows || []).map(r => r.h_local !== undefined ? r.h_local : (r.time instanceof Date ? r.time : new Date(r.time)).getHours()),
@@ -891,14 +888,14 @@ const AttestationIntemperieManager = () => {
                     rows: combinedRows,
                     stats: {
                         tmin: tDay && tDay.tmin !== 99 ? tDay.tmin : 0,
-                        tminTime: tDay ? tDay.tminTime : '',
+                        tminTime: tDay ? (tDay.tminTime || '') : '',
                         tmax: tDay && tDay.tmax !== -99 ? tDay.tmax : 0,
-                        tmaxTime: tDay ? tDay.tmaxTime : '',
+                        tmaxTime: tDay ? (tDay.tmaxTime || '') : '',
                         rainTotal: rDay ? rDay.rainTotal : 0,
-                        rainMaxTime: rDay ? rDay.rainMaxTime : '',
-                        gustMax: wDay ? wDay.gustMax : 0,
-                        gustTime: wDay ? wDay.gustTime : 'N/A',
-                        fxiMax: wDay ? (wDay.fxiMax || wDay.gustMax) : 0,
+                        rainMaxTime: rDay ? (rDay.rainMaxTime || '') : '',
+                        gustMax: wDay ? Math.round(wDay.gustMax) : 0,
+                        gustTime: wDay ? (wDay.gustTime || 'N/A') : 'N/A',
+                        fxiMax: wDay ? Math.round(wDay.fxiMax || wDay.gustMax) : 0,
                         fxiTime: wDay ? (wDay.fxiTime || wDay.gustTime || 'N/A') : 'N/A'
                     }
                 };
@@ -931,7 +928,7 @@ const AttestationIntemperieManager = () => {
 
         } catch (e) {
             console.error(e);
-            setStatus('❌ Erreur : ' + e.message);
+            setStatus('❌ Erreur : ' + (e.message || 'Impossible de récupérer les données.'));
         }
     };
 
@@ -1362,7 +1359,7 @@ const AttestationIntemperieManager = () => {
 
         const labels = allRows.map(r => {
             const d = new Date(r.time);
-            return isPeriod ? d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' ' + d.getHours() + 'h' : d.getHours() + 'h';
+            return isPeriod ? d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' ' + String(d.getHours()).padStart(2, '0') + 'h00' : String(d.getHours()).padStart(2, '0') + 'h00';
         });
 
         if (chartRefs.current['main']) {

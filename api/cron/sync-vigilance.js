@@ -3,10 +3,13 @@ export const config = {
 };
 
 export default async function handler(request) {
-    // Vérification optionnelle du secret cron de Vercel (si configuré)
+    // Échec fermé : sans CRON_SECRET valide, la requête est rejetée.
     const authHeader = request.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        console.warn('⚠️ Cron secret non vérifié ou manquant');
+    if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' }
+        });
     }
 
     const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;

@@ -14,3 +14,16 @@ data/icon-eu/
 data/output/
 .vercel
 .env*
+
+# Le modèle de configuration DOIT être versionné, même si .env* l'exclut.
+!.env.example
+
+# Build de production : reconstruit par Vercel à chaque déploiement.
+# Il ne doit pas être versionné (bundles obsolètes + secrets embarqués).
+dist/
+
+# Rapports générés localement
+eslint-report.json
+eslint-summary.csv
+build-report.txt
+depcheck.json

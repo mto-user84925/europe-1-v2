@@ -91,8 +91,10 @@ class MeteoFrancePosteService {
 
                 // Vent & Rafales (Conversion m/s -> km/h si nécessaire)
                 let wind = obs.ff ?? obs.ff_avg ?? 0;
-                // Priorité: raf10 (API v2 MF depuis 16/06/2026) > fxy (horaire) > fxi > ff_gst > fxi10 > null
-                let rawGust = obs.raf10 !== undefined && obs.raf10 !== null ? obs.raf10
+                // Priorité: fxi3s (norme 3s OMM/MF depuis 16/06/2026) > raf10 > fxy > fxi > ff_gst > fxi10 > null
+                let rawGust = obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s
+                            : obs.fxi3S !== undefined && obs.fxi3S !== null ? obs.fxi3S
+                            : obs.raf10 !== undefined && obs.raf10 !== null ? obs.raf10
                             : obs.fxy   !== undefined && obs.fxy   !== null ? obs.fxy
                             : obs.fxi   !== undefined && obs.fxi   !== null ? obs.fxi
                             : obs.ff_gst !== undefined && obs.ff_gst !== null ? obs.ff_gst

@@ -336,7 +336,7 @@ class MeteoFranceCollector {
                 td: obs.td != null ? Math.round((obs.td - 273.15) * 10) / 10 : null,
                 min_t: obs.min_t != null ? Math.round((obs.min_t - 273.15) * 10) / 10 : null,
                 max_t: obs.max_t != null ? Math.round((obs.max_t - 273.15) * 10) / 10 : null,
-                gust_kmh: (obs.fxi10 != null) ? Math.round(obs.fxi10 * 3.6) : (obs.fxi != null ? Math.round(obs.fxi * 3.6) : null),
+                gust_kmh: (obs.fxi3s != null) ? Math.round(obs.fxi3s * 3.6) : (obs.fxi3S != null) ? Math.round(obs.fxi3S * 3.6) : (obs.fxi10 != null) ? Math.round(obs.fxi10 * 3.6) : (obs.fxi != null ? Math.round(obs.fxi * 3.6) : null),
                 rr_per: obs.rr_per ?? 0,
                 vv: obs.vv ?? null
             };
@@ -394,7 +394,9 @@ class MeteoFranceCollector {
             const stationId = obs.geo_id_insee || obs.id;
             // Rafales : prioriser fxi10 (brut API), puis fxi, puis gust_kmh (déjà converti)
             let fxiKmh = null;
-            if (obs.fxi10 != null) fxiKmh = Math.round(obs.fxi10 * 3.6);
+            if (obs.fxi3s != null) fxiKmh = Math.round(obs.fxi3s * 3.6);
+            else if (obs.fxi3S != null) fxiKmh = Math.round(obs.fxi3S * 3.6);
+            else if (obs.fxi10 != null) fxiKmh = Math.round(obs.fxi10 * 3.6);
             else if (obs.fxi != null) fxiKmh = Math.round(obs.fxi * 3.6);
             else if (obs.gust_kmh != null) fxiKmh = Math.round(obs.gust_kmh);
 

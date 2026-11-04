@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Service pour récupérer et parser les données d'archives de Meteociel
  */
 
@@ -21,7 +21,7 @@ export const fetchMeteocielArchives = async (date, modeId) => {
         const day = d.getDate();
         const month = d.getMonth() + 1;
         const year = d.getFullYear();
-        const isToday = new Date().toISOString().split('T')[0] === date;
+        const isToday = new Date().toLocaleDateString('sv-SE') === date;
 
         const isLive = isToday && (modeId === '0' || modeId === 0);
         const url = isLive
@@ -233,7 +233,7 @@ export const fetchStationHistory = async (stationId, startDate, endDate) => {
 
     let current = new Date(start);
     while (current <= end) {
-        const dateStr = current.toISOString().split('T')[0];
+        const dateStr = current.toLocaleDateString('sv-SE');
         const data = await fetchStationDayExtremes(stationId, dateStr);
         if (data) {
             results.push(data);
@@ -260,7 +260,7 @@ export const fetchMultiDateArchives = async (startDate, endDate, modeId) => {
 
     let current = new Date(start);
     while (current <= end) {
-        const dateStr = current.toISOString().split('T')[0];
+        const dateStr = current.toLocaleDateString('sv-SE');
         try {
             const dailyData = await fetchMeteocielArchives(dateStr, modeId);
             // Ajouter la date à chaque ligne comme dans PowerQuery AddedDate = Table.AddColumn(Data, "Date", each uneDate)

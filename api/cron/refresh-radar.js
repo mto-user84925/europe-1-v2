@@ -210,6 +210,12 @@ async function h5ToPngBuffer(h5wasm, h5Data, timestampStr) {
 export default async function handler(req, res) {
     const startTime = Date.now();
 
+    // Échec fermé : sans CRON_SECRET valide, la requête est rejetée.
+    const auth = req.headers.authorization;
+    if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
     try {
         if (!MF_API_KEY) throw new Error('MF_RADAR_API_KEY not configured');
         if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Supabase not configured');

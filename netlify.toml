@@ -1,6 +1,7 @@
-
-# Netlify Configuration - Mode Déploiement Manuel
-# On supprime toute commande de build ici pour éviter les erreurs "package.json not found" sur Netlify.
+# Netlify Configuration — proxy aligné sur vercel.json
+# ⚠️ La plateforme de production est Vercel (voir vercel.json).
+# Ce fichier est conservé pour un déploiement Netlify de secours et doit rester
+# SYNCHRONE avec vercel.json, sinon des écrans se cassent silencieusement.
 
 [[redirects]]
   from = "/api-meteo/*"
@@ -19,13 +20,38 @@
   to = "https://public-api.meteofrance.fr/public/DPAI01/v1/:splat"
   status = 200
   force = true
-  
+
+[[redirects]]
+  from = "/api-meteo-clim/*"
+  to = "https://public-api.meteofrance.fr/public/DPClim/v1/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api-radar-mf/*"
+  to = "https://public-api.meteofrance.fr/public/DPPaquetRadar/v1/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api-meteociel/*"
+  to = "https://www.meteociel.fr/:splat"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/api-agate/*"
   to = "https://www.mwattest.fr/:splat"
   status = 200
   force = true
 
+[[redirects]]
+  from = "/ORAGE/*"
+  to = "https://www.mwattest.fr/ORAGE/:splat"
+  status = 200
+  force = true
+
+# SPA fallback — doit rester en dernier
 [[redirects]]
   from = "/*"
   to = "/index.html"
