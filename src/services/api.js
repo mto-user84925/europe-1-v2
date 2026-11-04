@@ -173,6 +173,10 @@ export const weatherAPI = {
                             fxi3s: obs.fxi3s !== undefined ? obs.fxi3s : obs.gust,
                             pres: obs.pres,
                             vv: obs.vv,
+                            htn_time: obs.htn_time,
+                            htx_time: obs.htx_time,
+                            hfxi3s_time: obs.hfxi3s_time,
+                            hfxi_time: obs.hfxi_time,
                             timestamp_raw: obs.time && typeof obs.time.toISOString === 'function' ? obs.time.toISOString() : String(obs.time || '')
                         }));
                 }

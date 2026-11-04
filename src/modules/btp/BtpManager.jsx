@@ -736,6 +736,10 @@ Voici les données brutes :`;
                     h_local: obs.h_local !== undefined ? obs.h_local : rowH,
                     h_utc: obs.h_utc !== undefined ? obs.h_utc : rowH,
                     time: obs.time || dt,
+                    htn_time: obs.htn_time,
+                    htx_time: obs.htx_time,
+                    hfxi3s_time: obs.hfxi3s_time,
+                    hfxi_time: obs.hfxi_time,
                     temp: obs.temp,
                     rain: obs.rain || 0,
                     snow: 0,
@@ -1255,18 +1259,18 @@ Voici les données brutes :`;
             const validTempRows = dData.filter(d => d.temp !== null && d.temp !== undefined);
             const minTempRow = validTempRows.length ? validTempRows.reduce((a, b) => b.temp < a.temp ? b : a, validTempRows[0]) : null;
             const maxTempRow = validTempRows.length ? validTempRows.reduce((a, b) => b.temp > a.temp ? b : a, validTempRows[0]) : null;
-            const hMinT = formatHour(minTempRow);
-            const hMaxT = formatHour(maxTempRow);
+            const hMinT = minTempRow?.htn_time || formatHour(minTempRow);
+            const hMaxT = maxTempRow?.htx_time || formatHour(maxTempRow);
 
             const rainRows = dData.filter(d => (d.rain || 0) > 0);
             const maxRainRow = rainRows.length ? rainRows.reduce((a, b) => (b.rain || 0) > (a.rain || 0) ? b : a, rainRows[0]) : null;
             const hRain = formatHour(maxRainRow);
 
             const maxGustRow = dData.length ? dData.reduce((a, b) => (b.w_gst || 0) > (a.w_gst || 0) ? b : a, dData[0]) : null;
-            const hGust = maxGustRow && (maxGustRow.w_gst || 0) > 0 ? formatHour(maxGustRow) : '';
+            const hGust = maxGustRow && (maxGustRow.w_gst || 0) > 0 ? (maxGustRow.hfxi3s_time || formatHour(maxGustRow)) : '';
 
             const maxFxiRow = dData.length ? dData.reduce((a, b) => (b.w_fxi || b.w_gst || 0) > (a.w_fxi || a.w_gst || 0) ? b : a, dData[0]) : null;
-            const hFxi = maxFxiRow && (maxFxiRow.w_fxi || maxFxiRow.w_gst || 0) > 0 ? formatHour(maxFxiRow) : '';
+            const hFxi = maxFxiRow && (maxFxiRow.w_fxi || maxFxiRow.w_gst || 0) > 0 ? (maxFxiRow.hfxi_time || formatHour(maxFxiRow)) : '';
 
             const maxAvgRow = dData.length ? dData.reduce((a, b) => (b.w_avg || 0) > (a.w_avg || 0) ? b : a, dData[0]) : null;
             const hAvg = maxAvgRow && (maxAvgRow.w_avg || 0) > 0 ? formatHour(maxAvgRow) : '';

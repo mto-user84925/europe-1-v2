@@ -544,6 +544,9 @@ export const meteoFranceClimService = {
         const idxFXI = headers.indexOf('FXI');
         const idxFXI3S = headers.indexOf('FXI3S');
         const idxHXI = headers.indexOf('HXI');
+        const idxHXI3S = headers.indexOf('HXI3S');
+        const idxHTN = headers.indexOf('HTN');
+        const idxHTX = headers.indexOf('HTX');
         const idxU = headers.indexOf('U');
         const idxTD = headers.indexOf('TD');
         const idxPMER = headers.indexOf('PMER');
@@ -558,6 +561,24 @@ export const meteoFranceClimService = {
             if (!v || v === '' || v === 'null') return null;
             const num = parseFloat(v.replace(',', '.'));
             return isNaN(num) ? null : num;
+        };
+
+        const parseUtcHHMM = (cols, idx, yr, mo, dy) => {
+            if (idx === -1) return null;
+            const v = cols[idx];
+            if (!v || v === '' || v === 'null') return null;
+            const s = String(v).trim().padStart(4, '0');
+            const hU = parseInt(s.slice(0, 2), 10);
+            const mU = parseInt(s.slice(2, 4), 10);
+            if (isNaN(hU) || isNaN(mU) || hU > 23 || mU > 59) return null;
+            const dtU = new Date(Date.UTC(yr, mo - 1, dy, hU, mU, 0));
+            const parts = new Intl.DateTimeFormat('fr-FR', {
+                timeZone: 'Europe/Paris',
+                hour: '2-digit', minute: '2-digit', hour12: false
+            }).formatToParts(dtU);
+            const hh = parts.find(p => p.type === 'hour')?.value || String(hU).padStart(2, '0');
+            const mm = parts.find(p => p.type === 'minute')?.value || String(mU).padStart(2, '0');
+            return `${hh}h${mm}`;
         };
 
         const results = [];
@@ -633,6 +654,10 @@ export const meteoFranceClimService = {
                 pres: pmer,
                 vv: vv,
                 snow: snow,
+                htn_time: parseUtcHHMM(cols, idxHTN, year, month, day),
+                htx_time: parseUtcHHMM(cols, idxHTX, year, month, day),
+                hfxi3s_time: parseUtcHHMM(cols, idxHXI3S, year, month, day),
+                hfxi_time: parseUtcHHMM(cols, idxHXI, year, month, day),
                 isDPClimHourly: true
             });
         }
