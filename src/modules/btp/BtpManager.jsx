@@ -1280,7 +1280,7 @@ Voici les données brutes :`;
 
             let sumH = ""; let sumR = "";
             const thStyle = 'background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;';
-            const subBadge = (h) => h ? `<br/><span style="font-size:0.75rem; color:#047857; font-weight:700;">(${h})</span>` : '';
+            const subBadge = (h) => h ? `<br/><span style="font-size:0.85rem; color:#334155; font-weight:bold;">(${h})</span>` : '';
 
             if (annexCols.temp) { 
                 sumH += `<th style="${thStyle}">T. Min</th><th style="${thStyle}">T. Max</th>`; 
@@ -1339,7 +1339,7 @@ Voici les données brutes :`;
             if (annexCols.humi) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">Hum.</th>";
             part2 += `</tr></thead><tbody>`;
             dData.forEach(r => {
-                part2 += `<tr class="btp-stripe"><td style="font-weight:700; color:#047857;">${String(r.h).padStart(2, '0')}h00</td>`;
+                part2 += `<tr class="btp-stripe"><td style="font-weight:bold; color:#003366; font-size:0.9rem;">${String(r.h).padStart(2, '0')}h00</td>`;
                 if (annexCols.temp) part2 += `<td>${r.temp !== null ? parseFloat(r.temp).toFixed(1) : '--'}</td>`;
                 if (annexCols.rain) part2 += `<td>${parseFloat(r.rain || 0).toFixed(1)}</td>`;
                 if (annexCols.snow) part2 += `<td>${parseFloat(r.snow || 0).toFixed(1)}</td>`;

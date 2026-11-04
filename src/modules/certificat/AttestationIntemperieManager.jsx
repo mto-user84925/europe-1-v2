@@ -1184,23 +1184,23 @@ const AttestationIntemperieManager = () => {
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${isRain || isStandardRain ? '<span style="color:#e11d48; font-weight:900;">INTEMPÉRIES</span>' : getRainLabel(s.rainTotal)}
-                                            ${s.rainMaxTime ? `<span style="font-size:6pt; color:#047857; font-weight:700;"><br/>(Pic: ${s.rainMaxTime})</span>` : ''}
+                                            ${s.rainMaxTime ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(Pic: ${s.rainMaxTime})</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${getTempMiniLabel(s.tmin, showPersonalization ? Math.min(0, limitTemp) : 0)}
-                                            ${s.tminTime ? `<span style="font-size:6pt; color:#047857; font-weight:700;"><br/>(${s.tminTime})</span>` : ''}
+                                            ${s.tminTime ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(${s.tminTime})</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${getTempMaxiLabel(s.tmax, showPersonalization ? limitTempMax : 99)}
-                                            ${s.tmaxTime ? `<span style="font-size:6pt; color:#047857; font-weight:700;"><br/>(${s.tmaxTime})</span>` : ''}
+                                            ${s.tmaxTime ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(${s.tmaxTime})</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${getWindLabel(s.gustMax, showPersonalization ? Math.max(60, limitWind) : 60)}
-                                            ${s.gustTime && s.gustTime !== 'N/A' ? `<span style="font-size:6pt; color:#047857; font-weight:700;"><br/>(${s.gustTime})</span>` : ''}
+                                            ${s.gustTime && s.gustTime !== 'N/A' ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(${s.gustTime})</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000; font-weight:bold; color:${(s.fxiMax || s.gustMax) >= 60 ? '#dc2626' : '#1e293b'};">
                                             ${Math.round(s.fxiMax || s.gustMax)} km/h
-                                            ${s.fxiTime && s.fxiTime !== 'N/A' ? `<span style="font-size:6pt; color:#047857; font-weight:700;"><br/>(${s.fxiTime})</span>` : ''}
+                                            ${s.fxiTime && s.fxiTime !== 'N/A' ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(${s.fxiTime})</span>` : ''}
                                         </td>
                                     </tr>
                                 `;
@@ -1269,23 +1269,23 @@ const AttestationIntemperieManager = () => {
                                         <td style="border:1px solid #000; font-weight:bold;">${d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: '2-digit', year: 'numeric' })}</td>
                                         <td style="border:1px solid #000; ${s.tmin <= 0 ? 'color:red; font-weight:bold;' : ''}">
                                             ${s.tmin.toFixed(1).replace('.', ',')}
-                                            ${s.tminTime ? `<span style="font-size:6pt; font-weight:700; color:#047857;"><br/>${s.tminTime}</span>` : ''}
+                                            ${s.tminTime ? `<span style="font-size:7.5pt; font-weight:bold; color:#334155;"><br/>${s.tminTime}</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${s.tmax.toFixed(1).replace('.', ',')}
-                                            ${s.tmaxTime ? `<span style="font-size:6pt; font-weight:700; color:#047857;"><br/>${s.tmaxTime}</span>` : ''}
+                                            ${s.tmaxTime ? `<span style="font-size:7.5pt; font-weight:bold; color:#334155;"><br/>${s.tmaxTime}</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000; ${s.rainTotal >= 10 ? 'color:blue; font-weight:bold;' : ''}">
                                             ${s.rainTotal.toFixed(1).replace('.', ',')}
-                                            ${s.rainMaxTime ? `<span style="font-size:6pt; font-weight:700; color:#047857;"><br/>Pic: ${s.rainMaxTime}</span>` : ''}
+                                            ${s.rainMaxTime ? `<span style="font-size:7.5pt; font-weight:bold; color:#334155;"><br/>Pic: ${s.rainMaxTime}</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000; ${s.gustMax >= 60 ? 'color:#ea580c; font-weight:bold;' : ''}">
                                             ${Math.round(s.gustMax)}
-                                            ${s.gustTime && s.gustTime !== 'N/A' ? `<span style="font-size:6pt; font-weight:700; color:#047857;"><br/>${s.gustTime}</span>` : ''}
+                                            ${s.gustTime && s.gustTime !== 'N/A' ? `<span style="font-size:7.5pt; font-weight:bold; color:#334155;"><br/>${s.gustTime}</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000; ${(s.fxiMax || s.gustMax) >= 60 ? 'color:#dc2626; font-weight:bold;' : ''}">
                                             ${Math.round(s.fxiMax || s.gustMax)}
-                                            ${s.fxiTime && s.fxiTime !== 'N/A' ? `<span style="font-size:6pt; font-weight:700; color:#047857;"><br/>${s.fxiTime}</span>` : ''}
+                                            ${s.fxiTime && s.fxiTime !== 'N/A' ? `<span style="font-size:7.5pt; font-weight:bold; color:#334155;"><br/>${s.fxiTime}</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${dayIsKo ? '<strong>INTEMPÉRIE</strong>' : '<span style="color:#64748b;">RAS</span>'}

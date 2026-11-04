@@ -311,21 +311,80 @@ const CertificatMeteoManager = () => {
                 }
             }
 
-            // Candidats stations proches (distances géographiques sans spam DPClim)
+            // Candidats stations proches (4 plus proches)
             const candidates = dists.filter(s => s.id !== selectedStationId).slice(0, 4);
-            const enrichedCandidates = candidates.map(s => ({
-                id: s.id,
-                name: s.name || s.id,
-                dist: s.dist_km,
-                maxGust: '-',
-                maxGustDate: null,
-                rain: '-',
-                maxTemp: '-',
-                maxTempDate: null,
-                minTemp: '-',
-                minTempDate: null,
-                snow: '-'
-            }));
+            const targetEnd = isPeriod ? endDate : startDate;
+            const enrichedCandidates = [];
+
+            for (const s of candidates) {
+                try {
+                    let sHistory = await weatherAPI.getStationHourlyHistoryRange(s.id, startDate, targetEnd);
+                    if (!sHistory || sHistory.length === 0) {
+                        try {
+                            const { meteoFrancePosteService } = await import('../../services/meteoFrancePosteService');
+                            sHistory = await meteoFrancePosteService.getStationHourlyHistory(s.id, startDate, targetEnd);
+                        } catch (e) { }
+                    }
+                    if (!sHistory || sHistory.length === 0) {
+                        try {
+                            const data6mn = await weatherAPI.getStation6mnHistory(s.id, new Date(startDate));
+                            if (data6mn && data6mn.length > 0) {
+                                sHistory = data6mn.map(d => ({
+                                    temp: d.temp,
+                                    rain: d.rain,
+                                    gust: d.gust,
+                                    time: d.time
+                                }));
+                            }
+                        } catch (e) { }
+                    }
+
+                    if (sHistory && sHistory.length > 0) {
+                        const maxGustRow = sHistory.reduce((max, r) => (r.gust || 0) > (max.gust || 0) ? r : max, sHistory[0]);
+                        const maxTempRow = sHistory.reduce((max, r) => (r.temp !== null ? r.temp : -99) > (max.temp !== null ? max.temp : -99) ? r : max, sHistory[0]);
+                        const minTempRow = sHistory.reduce((min, r) => (r.temp !== null ? r.temp : 99) < (min.temp !== null ? min.temp : 99) ? r : min, sHistory[0]);
+                        const totalRain = sHistory.reduce((acc, r) => acc + (r.rain || 0), 0);
+
+                        enrichedCandidates.push({
+                            id: s.id,
+                            name: s.name || s.id,
+                            dist: s.dist_km,
+                            maxGust: maxGustRow && maxGustRow.gust ? Math.round(maxGustRow.gust) : '-',
+                            maxGustDate: maxGustRow ? (maxGustRow.hfxi3s_time || maxGustRow.time) : null,
+                            rain: totalRain > 0 ? totalRain.toFixed(1).replace('.', ',') : '0,0',
+                            maxTemp: maxTempRow && maxTempRow.temp !== null ? maxTempRow.temp.toFixed(1).replace('.', ',') : '-',
+                            maxTempDate: maxTempRow ? (maxTempRow.htx_time || maxTempRow.time) : null,
+                            minTemp: minTempRow && minTempRow.temp !== null ? minTempRow.temp.toFixed(1).replace('.', ',') : '-',
+                            minTempDate: minTempRow ? (minTempRow.htn_time || minTempRow.time) : null,
+                            snow: '-'
+                        });
+                    } else {
+                        enrichedCandidates.push({
+                            id: s.id,
+                            name: s.name || s.id,
+                            dist: s.dist_km,
+                            maxGust: '-',
+                            maxGustDate: null,
+                            rain: '-',
+                            maxTemp: '-',
+                            minTemp: '-',
+                            snow: '-'
+                        });
+                    }
+                } catch (e) {
+                    enrichedCandidates.push({
+                        id: s.id,
+                        name: s.name || s.id,
+                        dist: s.dist_km,
+                        maxGust: '-',
+                        maxGustDate: null,
+                        rain: '-',
+                        maxTemp: '-',
+                        minTemp: '-',
+                        snow: '-'
+                    });
+                }
+            }
 
             setNearbyStations(enrichedCandidates);
         } catch (errGeo) {
@@ -1113,39 +1172,55 @@ const CertificatMeteoManager = () => {
             htmlRows += `<tr style="border-bottom: 1px solid #e2e8f0;">
                 <td style="padding: 8px 12px; font-size: 10pt;">${param}</td>
                 <td style="padding: 8px 12px; font-size: 10pt;"><span class="cert-value-essential">${val}</span></td>
-                <td style="padding: 8px 12px; font-size: 9.5pt; color:#475569;">${time}</td>
+                <td style="padding: 8px 12px; font-size: 10pt; font-weight: bold; color: #1e293b;">${time}</td>
             </tr>`;
         };
 
         const formatTime = (d) => {
             if (!d) return '-';
-            if (typeof d === 'string' && d.includes('h')) {
-                return (startDate ? new Date(startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' à ' : '') + d;
+            if (typeof d === 'string') {
+                if (d.includes('h')) {
+                    return (startDate ? new Date(startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' à ' : '') + d;
+                }
+                const dt = new Date(d);
+                if (!isNaN(dt.getTime())) return `${dt.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${String(dt.getHours()).padStart(2, '0')}h${String(dt.getMinutes()).padStart(2, '0')}`;
+                return d;
             }
-            const dt = d instanceof Date ? d : new Date(d);
-            return !isNaN(dt.getTime()) ? `${dt.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${String(dt.getHours()).padStart(2, '0')}h${String(dt.getMinutes()).padStart(2, '0')}` : String(d);
+            if (d instanceof Date) {
+                if (!isNaN(d.getTime())) return `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+                return '-';
+            }
+            return String(d);
         };
         const formatTimeShort = (d) => {
             if (!d) return '-';
-            if (typeof d === 'string' && d.includes('h')) return d;
-            const dt = d instanceof Date ? d : new Date(d);
-            return !isNaN(dt.getTime()) ? `${String(dt.getHours()).padStart(2, '0')}h${String(dt.getMinutes()).padStart(2, '0')}` : String(d);
+            if (typeof d === 'string') {
+                if (d.includes('h')) return d;
+                const dt = new Date(d);
+                if (!isNaN(dt.getTime())) return `${String(dt.getHours()).padStart(2, '0')}h${String(dt.getMinutes()).padStart(2, '0')}`;
+                return d;
+            }
+            if (d instanceof Date) {
+                if (!isNaN(d.getTime())) return `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+                return '-';
+            }
+            return String(d);
         };
 
         // Use appropriate time format depending if it's a multi-day period or single day
         const timeDisplay = (d) => isPeriod ? formatTime(d) : formatTimeShort(d);
 
         if (showWindParams) {
-            const t = stats.windGustMaxTime ? new Date(stats.windGustMaxTime) : null;
+            const t = stats.windGustMaxTime;
             const g = Math.round(stats.windGustMax);
             const gFxi = stats.windFxiMax ? Math.round(stats.windFxiMax) : g;
-            const tFxi = stats.windFxiMaxTime ? new Date(stats.windFxiMaxTime) : t;
+            const tFxi = stats.windFxiMaxTime || t;
             addRow("Rafale Max (FXI 3s OMM)", `${g} km/h`, t ? timeDisplay(t) : '-');
             addRow("Rafale Max (FXI Brut)", `${gFxi} km/h`, tFxi ? timeDisplay(tFxi) : '-');
         }
         if (showRainParams) {
             const r = stats.rainTotal;
-            const rMaxTime = stats.rainMaxTime ? new Date(stats.rainMaxTime) : null;
+            const rMaxTime = stats.rainMaxTime;
             const rMaxVal = stats.rainMaxH ? stats.rainMaxH.toFixed(1).replace('.', ',') : null;
             const rainTimeLabel = (rMaxTime && stats.rainMaxH > 0) ? `Pic: ${rMaxVal} mm/h à ${timeDisplay(rMaxTime)}` : "Période";
 
@@ -1157,8 +1232,8 @@ const CertificatMeteoManager = () => {
             }
         }
         if (showTempParams) {
-            const tMax = stats.tempMaxTime ? new Date(stats.tempMaxTime) : null;
-            const tMin = stats.tempMinTime ? new Date(stats.tempMinTime) : null;
+            const tMax = stats.tempMaxTime;
+            const tMin = stats.tempMinTime;
 
             if (tLower.includes('froid') || tLower.includes('gel') || tLower.includes('neige') || tLower.includes('verglas')) {
                 addRow("Temp. Min", `${stats.tempMin}°C`, tMin ? timeDisplay(tMin) : '-');
@@ -1204,9 +1279,16 @@ const CertificatMeteoManager = () => {
             valueLabel = "RAFALE MAX";
             getValue = (s) => {
                 if (!s.maxGust || s.maxGust === '-') return '-';
-                // Correct property is maxGustDate based on refreshNearbyStations
-                const tDate = s.maxGustDate ? new Date(s.maxGustDate) : new Date(startDate);
-                return `<strong>${s.maxGust} km/h</strong> <span style="font-size:7pt; color:#047857; font-weight:700;">(${String(tDate.getHours()).padStart(2, '0')}h${String(tDate.getMinutes()).padStart(2, '0')})</span>`;
+                let timeStr = '';
+                if (typeof s.maxGustDate === 'string' && s.maxGustDate.includes('h')) {
+                    timeStr = s.maxGustDate;
+                } else if (s.maxGustDate) {
+                    const tDate = new Date(s.maxGustDate);
+                    if (!isNaN(tDate.getTime())) {
+                        timeStr = `${String(tDate.getHours()).padStart(2, '0')}h${String(tDate.getMinutes()).padStart(2, '0')}`;
+                    }
+                }
+                return `<strong>${s.maxGust} km/h</strong>${timeStr ? ` <span style="font-size:8.5pt; color:#475569; font-weight:bold;">(${timeStr})</span>` : ''}`;
             };
         } else if (certType.includes('Pluie') || certType.includes('Inondation')) {
             valueLabel = "CUMUL PLUIE";
@@ -1309,7 +1391,7 @@ const CertificatMeteoManager = () => {
                         ${dayRows.map(r => `
                             <tr>
                                 <td style="color:#475569;">${dateShort}</td>
-                                <td style="font-weight:bold; color:#047857;">${String(r.h).padStart(2, '0')}h00</td>
+                                <td style="font-weight:bold; color:#003366; font-size:9pt;">${String(r.h).padStart(2, '0')}h00</td>
                                 ${annexCols.temp ? `<td style="font-weight:600;">${r.temp !== null ? r.temp.toFixed(1) : '-'}</td>` : ''}
                                 ${annexCols.rain ? `<td ${r.rain > 0 ? 'style="color:#2563eb; font-weight:bold;"' : ''}>${r.rain > 0 ? r.rain.toFixed(1).replace('.', ',') : '0,0'}</td>` : ''}
                                 ${annexCols.windA ? `<td>${r.w_avg !== null && r.w_avg !== undefined ? Math.round(r.w_avg) : '-'}</td>` : ''}
@@ -1502,7 +1584,7 @@ const CertificatMeteoManager = () => {
                 </div>
 
                 <div class="cert-section-header">DESCRIPTION DE LA SITUATION MÉTÉOROLOGIQUE</div>
-                <div class="cert-text-block">${formatCustomText(customSynthesis || generateSynthesisText(stats, rows))}</div>
+                <div class="cert-text-block">${customSynthesis ? formatCustomText(customSynthesis) : generateSynthesisText(stats, rows)}</div>
 
                 <div class="cert-section-header">MESURES OBSERVÉES - STATION DE RÉFÉRENCE</div>
                 ${stationMeteoTemp === stationMeteoRain && stationMeteoRain === stationMeteoWind ? `
@@ -1527,7 +1609,7 @@ const CertificatMeteoManager = () => {
                 ${getNearbyStationsTable()}
 
                 <div class="cert-section-header">CONCLUSION DE L'ANALYSE</div>
-                <div class="cert-conclusion-box">${formatCustomText(customConclusion || generateConclusion(stats, certType))}</div>
+                <div class="cert-conclusion-box">${customConclusion ? formatCustomText(customConclusion) : generateConclusion(stats, certType)}</div>
 
                 ${customClassification ? `
                 <div style="margin-top: 14px; page-break-inside: avoid;">
