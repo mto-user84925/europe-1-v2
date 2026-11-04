@@ -1206,7 +1206,7 @@ const CertificatMeteoManager = () => {
                 if (!s.maxGust || s.maxGust === '-') return '-';
                 // Correct property is maxGustDate based on refreshNearbyStations
                 const tDate = s.maxGustDate ? new Date(s.maxGustDate) : new Date(startDate);
-                return `<strong>${s.maxGust} km/h</strong> <span style="font-size:7pt; color:#64748b; font-weight:normal;">(${tDate.getHours()}h${tDate.getMinutes().toString().padStart(2, '0')})</span>`;
+                return `<strong>${s.maxGust} km/h</strong> <span style="font-size:7pt; color:#047857; font-weight:700;">(${String(tDate.getHours()).padStart(2, '0')}h${String(tDate.getMinutes()).padStart(2, '0')})</span>`;
             };
         } else if (certType.includes('Pluie') || certType.includes('Inondation')) {
             valueLabel = "CUMUL PLUIE";
@@ -1309,7 +1309,7 @@ const CertificatMeteoManager = () => {
                         ${dayRows.map(r => `
                             <tr>
                                 <td style="color:#475569;">${dateShort}</td>
-                                <td style="font-weight:bold; color:#003366;">${String(r.h).padStart(2, '0')}h00</td>
+                                <td style="font-weight:bold; color:#047857;">${String(r.h).padStart(2, '0')}h00</td>
                                 ${annexCols.temp ? `<td style="font-weight:600;">${r.temp !== null ? r.temp.toFixed(1) : '-'}</td>` : ''}
                                 ${annexCols.rain ? `<td ${r.rain > 0 ? 'style="color:#2563eb; font-weight:bold;"' : ''}>${r.rain > 0 ? r.rain.toFixed(1).replace('.', ',') : '0,0'}</td>` : ''}
                                 ${annexCols.windA ? `<td>${r.w_avg !== null && r.w_avg !== undefined ? Math.round(r.w_avg) : '-'}</td>` : ''}
