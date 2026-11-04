@@ -311,13 +311,84 @@ const CertificatMeteoManager = () => {
                 }
             }
 
-            // Candidats stations proches (4 plus proches)
-            const candidates = dists.filter(s => s.id !== selectedStationId).slice(0, 4);
+            // Candidats stations proches (toutes les stations ordonnées par distance, hors station sélectionnée)
+            const allCandidates = dists.filter(s => s.id !== selectedStationId);
             const targetEnd = isPeriod ? endDate : startDate;
-            const enrichedCandidates = [];
+            const isHistorical = targetEnd < new Date().toLocaleDateString('sv-SE');
+            const validStations = [];
 
-            for (const s of candidates) {
+            const isStationValidForParam = (s, type) => {
+                if (!s) return false;
+                const t = String(type || '').toLowerCase();
+                // Vent / Tempête / Orage / Foudre / Rafale
+                if (t.includes('vent') || t.includes('tempête') || t.includes('tempete') || t.includes('orage') || t.includes('foudre') || t.includes('rafale')) {
+                    const g = Number(s.maxGust);
+                    return s.maxGust !== '-' && s.maxGust !== null && !isNaN(g) && g > 0;
+                }
+                // Pluie / Inondation / Précipitations
+                if (t.includes('pluie') || t.includes('inondation') || t.includes('precip') || t.includes('précip')) {
+                    return s.rain !== '-' && s.rain !== null && s.rain !== undefined && s.hasRainMeasure === true;
+                }
+                // Canicule / Froid / Gel / Température
+                if (t.includes('canicule') || t.includes('froid') || t.includes('gel') || t.includes('temp')) {
+                    return s.minTemp !== '-' && s.minTemp !== null && s.maxTemp !== '-' && s.maxTemp !== null;
+                }
+                // Fallback générique
+                return (s.maxGust && s.maxGust !== '-') || (s.rain && s.rain !== '-') || (s.maxTemp && s.maxTemp !== '-');
+            };
+
+            const fetchCandidateObs = async (s) => {
                 try {
+                    // 1. Pour les dates passées : DPClim quotidien officiel (ultra-rapide et certifié Météo-France)
+                    if (isHistorical) {
+                        try {
+                            const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
+                            const dailyRows = await meteoFranceClimService.fetchStationHistory(s.id, startDate, targetEnd);
+                            if (dailyRows && dailyRows.length > 0) {
+                                // Rafale max (fxi3s normalisé 3s OMM en priorité, sinon fxi)
+                                const validGustRows = dailyRows.filter(r => (r.fxi3s && r.fxi3s > 0) || (r.fxi && r.fxi > 0));
+                                let maxGustVal = '-';
+                                let maxGustHour = null;
+                                if (validGustRows.length > 0) {
+                                    const maxRow = validGustRows.reduce((max, r) => {
+                                        const rGust = r.fxi3s || r.fxi || 0;
+                                        const mGust = max.fxi3s || max.fxi || 0;
+                                        return rGust > mGust ? r : max;
+                                    }, validGustRows[0]);
+                                    maxGustVal = Math.round(maxRow.fxi3s || maxRow.fxi);
+                                    maxGustHour = maxRow.hxi || null;
+                                }
+
+                                // Pluie cumulée
+                                const validRainRows = dailyRows.filter(r => r.rr !== null && r.rr !== undefined);
+                                const hasRain = validRainRows.length > 0;
+                                const totalRain = validRainRows.reduce((acc, r) => acc + (r.rr || 0), 0);
+
+                                // Températures min / max
+                                const validTnRows = dailyRows.filter(r => r.tn !== null && r.tn !== undefined);
+                                const validTxRows = dailyRows.filter(r => r.tx !== null && r.tx !== undefined);
+                                const minTn = validTnRows.length > 0 ? Math.min(...validTnRows.map(r => r.tn)) : null;
+                                const maxTx = validTxRows.length > 0 ? Math.max(...validTxRows.map(r => r.tx)) : null;
+
+                                return {
+                                    id: s.id,
+                                    name: s.name || s.id,
+                                    dist: s.dist_km,
+                                    maxGust: maxGustVal,
+                                    maxGustDate: maxGustHour,
+                                    rain: hasRain ? totalRain.toFixed(1).replace('.', ',') : '-',
+                                    hasRainMeasure: hasRain,
+                                    minTemp: minTn !== null ? minTn.toFixed(1).replace('.', ',') : '-',
+                                    maxTemp: maxTx !== null ? maxTx.toFixed(1).replace('.', ',') : '-',
+                                    snow: '-'
+                                };
+                            }
+                        } catch (eDaily) {
+                            console.warn(`[Certificat] Échec DPClim quotidien station ${s.id}:`, eDaily);
+                        }
+                    }
+
+                    // 2. Fallback horaire / 6mn (pour aujourd'hui ou secours)
                     let sHistory = await weatherAPI.getStationHourlyHistoryRange(s.id, startDate, targetEnd);
                     if (!sHistory || sHistory.length === 0) {
                         try {
@@ -340,53 +411,89 @@ const CertificatMeteoManager = () => {
                     }
 
                     if (sHistory && sHistory.length > 0) {
-                        const maxGustRow = sHistory.reduce((max, r) => (r.gust || 0) > (max.gust || 0) ? r : max, sHistory[0]);
-                        const maxTempRow = sHistory.reduce((max, r) => (r.temp !== null ? r.temp : -99) > (max.temp !== null ? max.temp : -99) ? r : max, sHistory[0]);
-                        const minTempRow = sHistory.reduce((min, r) => (r.temp !== null ? r.temp : 99) < (min.temp !== null ? min.temp : 99) ? r : min, sHistory[0]);
-                        const totalRain = sHistory.reduce((acc, r) => acc + (r.rain || 0), 0);
+                        const gustRows = sHistory.filter(r => (r.gust && r.gust > 0) || (r.fxi3s && r.fxi3s > 0) || (r.fxi && r.fxi > 0));
+                        let maxGustVal = '-';
+                        let maxGustHour = null;
+                        if (gustRows.length > 0) {
+                            const maxRow = gustRows.reduce((max, r) => {
+                                const rG = r.gust || r.fxi3s || r.fxi || 0;
+                                const mG = max.gust || max.fxi3s || max.fxi || 0;
+                                return rG > mG ? r : max;
+                            }, gustRows[0]);
+                            maxGustVal = Math.round(maxRow.gust || maxRow.fxi3s || maxRow.fxi);
+                            maxGustHour = maxRow.hfxi3s_time || maxRow.hfxi_time || maxRow.time || null;
+                        }
 
-                        enrichedCandidates.push({
+                        const tempRows = sHistory.filter(r => r.temp !== null && r.temp !== undefined);
+                        const minTempRow = tempRows.length > 0 ? tempRows.reduce((min, r) => r.temp < min.temp ? r : min, tempRows[0]) : null;
+                        const maxTempRow = tempRows.length > 0 ? tempRows.reduce((max, r) => r.temp > max.temp ? r : max, tempRows[0]) : null;
+
+                        const rainRows = sHistory.filter(r => r.rain !== null && r.rain !== undefined);
+                        const hasRain = rainRows.length > 0;
+                        const totalRain = rainRows.reduce((acc, r) => acc + (r.rain || 0), 0);
+
+                        return {
                             id: s.id,
                             name: s.name || s.id,
                             dist: s.dist_km,
-                            maxGust: maxGustRow && maxGustRow.gust ? Math.round(maxGustRow.gust) : '-',
-                            maxGustDate: maxGustRow ? (maxGustRow.hfxi3s_time || maxGustRow.time) : null,
-                            rain: totalRain > 0 ? totalRain.toFixed(1).replace('.', ',') : '0,0',
-                            maxTemp: maxTempRow && maxTempRow.temp !== null ? maxTempRow.temp.toFixed(1).replace('.', ',') : '-',
-                            maxTempDate: maxTempRow ? (maxTempRow.htx_time || maxTempRow.time) : null,
-                            minTemp: minTempRow && minTempRow.temp !== null ? minTempRow.temp.toFixed(1).replace('.', ',') : '-',
-                            minTempDate: minTempRow ? (minTempRow.htn_time || minTempRow.time) : null,
+                            maxGust: maxGustVal,
+                            maxGustDate: maxGustHour,
+                            rain: hasRain ? totalRain.toFixed(1).replace('.', ',') : '-',
+                            hasRainMeasure: hasRain,
+                            minTemp: minTempRow ? minTempRow.temp.toFixed(1).replace('.', ',') : '-',
+                            maxTemp: maxTempRow ? maxTempRow.temp.toFixed(1).replace('.', ',') : '-',
                             snow: '-'
-                        });
-                    } else {
-                        enrichedCandidates.push({
-                            id: s.id,
-                            name: s.name || s.id,
-                            dist: s.dist_km,
-                            maxGust: '-',
-                            maxGustDate: null,
-                            rain: '-',
-                            maxTemp: '-',
-                            minTemp: '-',
-                            snow: '-'
-                        });
+                        };
                     }
-                } catch (e) {
-                    enrichedCandidates.push({
+
+                    return {
                         id: s.id,
                         name: s.name || s.id,
                         dist: s.dist_km,
                         maxGust: '-',
                         maxGustDate: null,
                         rain: '-',
-                        maxTemp: '-',
+                        hasRainMeasure: false,
                         minTemp: '-',
+                        maxTemp: '-',
                         snow: '-'
-                    });
+                    };
+                } catch (e) {
+                    return {
+                        id: s.id,
+                        name: s.name || s.id,
+                        dist: s.dist_km,
+                        maxGust: '-',
+                        maxGustDate: null,
+                        rain: '-',
+                        hasRainMeasure: false,
+                        minTemp: '-',
+                        maxTemp: '-',
+                        snow: '-'
+                    };
+                }
+            };
+
+            // Parcourir les stations candidates par lots de 4 pour trouver STRICTEMENT les 3 stations les plus proches
+            // mesurant le paramètre requis (si une station ne mesure pas, on passe au suivant)
+            const BATCH_SIZE = 4;
+            for (let i = 0; i < allCandidates.length && validStations.length < 3; i += BATCH_SIZE) {
+                const batch = allCandidates.slice(i, i + BATCH_SIZE);
+                const batchResults = await Promise.all(batch.map(s => fetchCandidateObs(s)));
+                for (const res of batchResults) {
+                    if (!res) continue;
+                    if (isStationValidForParam(res, certType)) {
+                        validStations.push(res);
+                        console.log(`[Certificat] Station retenue (${validStations.length}/3) : ${res.name} (${res.dist} km) - Rafale: ${res.maxGust} km/h - Pluie: ${res.rain} mm`);
+                        if (validStations.length === 3) break;
+                    } else {
+                        console.log(`[Certificat] Station ignorée : ${res.name} (ne mesure pas le paramètre requis pour ${certType})`);
+                    }
                 }
             }
 
-            setNearbyStations(enrichedCandidates);
+            console.log(`[Certificat] ${validStations.length} stations valides trouvées pour ${certType}`);
+            setNearbyStations(validStations.slice(0, 3));
         } catch (errGeo) {
             console.error("Erreur refreshNearbyStations:", errGeo);
         }
@@ -1275,7 +1382,7 @@ const CertificatMeteoManager = () => {
         let valueLabel = "VALEUR";
         let getValue = (s) => "-";
 
-        if (certType.includes('Vent') || certType.includes('Tempête') || certType.includes('Orage')) {
+        if (certType.includes('Vent') || certType.includes('Tempête') || certType.includes('Orage') || certType.includes('Foudre') || certType.includes('Rafale')) {
             valueLabel = "RAFALE MAX";
             getValue = (s) => {
                 if (!s.maxGust || s.maxGust === '-') return '-';
@@ -1290,18 +1397,18 @@ const CertificatMeteoManager = () => {
                 }
                 return `<strong>${s.maxGust} km/h</strong>${timeStr ? ` <span style="font-size:8.5pt; color:#475569; font-weight:bold;">(${timeStr})</span>` : ''}`;
             };
-        } else if (certType.includes('Pluie') || certType.includes('Inondation')) {
+        } else if (certType.includes('Pluie') || certType.includes('Inondation') || certType.includes('Précip') || certType.includes('Precip')) {
             valueLabel = "CUMUL PLUIE";
             getValue = (s) => !s.rain || s.rain === '-' ? '-' : `<strong>${s.rain} mm</strong>`;
         } else {
             valueLabel = "T° MIN / MAX";
-            getValue = (s) => `${s.minTemp} / ${s.maxTemp} °C`;
+            getValue = (s) => !s.minTemp || s.minTemp === '-' ? '-' : `<strong>${s.minTemp} / ${s.maxTemp} °C</strong>`;
         }
 
         return `
             <div class="cert-section-header" style="margin-top: 10px; margin-bottom: 2px;">COMPARAISON STATIONS ENVIRONNANTES</div>
             <div style="font-size: 8pt; color: #475569; margin-bottom: 4px; font-style:italic;">
-                Relevés des 4 stations officielles les plus proches.
+                Relevés des 3 stations officielles les plus proches mesurant ce paramètre.
             </div>
             <table class="cert-table" style="margin-top: 0; font-size: 9.5pt;">
                 <thead>
@@ -1312,10 +1419,10 @@ const CertificatMeteoManager = () => {
                     </tr>
                 </thead>
                 <tbody>
-                    ${nearbyStations.slice(0, 4).map(s => `
+                    ${nearbyStations.slice(0, 3).map(s => `
                         <tr>
                             <td style="padding: 8px 12px; text-align:left; font-weight:bold; color:#0f172a;">${s.name}</td>
-                            <td style="padding: 8px 12px; font-size: 9pt; color:#64748b;">${s.dist ? Math.round(s.dist) + ' km' : '-'}</td>
+                            <td style="padding: 8px 12px; font-size: 9pt; color:#64748b;">${s.dist ? Math.round(s.dist) + ' km' : (s.dist_km ? Math.round(s.dist_km) + ' km' : '-')}</td>
                             <td style="padding: 8px 12px; font-weight:900; color:#334155;">${getValue(s)}</td>
                         </tr>
                     `).join('')}
