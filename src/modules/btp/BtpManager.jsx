@@ -1139,7 +1139,38 @@ Voici les données brutes :`;
                     if (affectsActive && calculateKoV96(r, dataObj.rows, dataObj.soil, dataObj.forceHeat, dataObj.forceFroze, dataObj.fog)) dayIsKo = true;
                 });
                 if (dayIsKo) daysKO.add(date);
-                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${maxG.toFixed(1)} km/h</td><td style="padding:4px;">${maxFxi.toFixed(1)} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
+
+                const getHStr = (row) => {
+                    if (!row) return '';
+                    if (row.h !== undefined && row.h !== null) {
+                        return String(row.h).replace('h', '').trim().padStart(2, '0') + 'h';
+                    }
+                    if (row.time) {
+                        const d = new Date(row.time);
+                        return String(d.getHours()).padStart(2, '0') + 'h';
+                    }
+                    return '';
+                };
+
+                const vRows = rows.filter(d => d.temp !== null && d.temp !== undefined);
+                const rMinT = vRows.length ? vRows.reduce((a, b) => b.temp < a.temp ? b : a, vRows[0]) : null;
+                const rMaxT = vRows.length ? vRows.reduce((a, b) => b.temp > a.temp ? b : a, vRows[0]) : null;
+                const hMinT = getHStr(rMinT);
+                const hMaxT = getHStr(rMaxT);
+
+                const rainRows = rows.filter(d => (d.rain || 0) > 0);
+                const rRain = rainRows.length ? rainRows.reduce((a, b) => (b.rain || 0) > (a.rain || 0) ? b : a, rainRows[0]) : null;
+                const hRain = getHStr(rRain);
+
+                const rGust = rows.length ? rows.reduce((a, b) => (b.w_gst || 0) > (a.w_gst || 0) ? b : a, rows[0]) : null;
+                const hGust = rGust && (rGust.w_gst || 0) > 0 ? getHStr(rGust) : '';
+
+                const rFxi = rows.length ? rows.reduce((a, b) => (b.w_fxi || b.w_gst || 0) > (a.w_fxi || a.w_gst || 0) ? b : a, rows[0]) : null;
+                const hFxi = rFxi && (rFxi.w_fxi || rFxi.w_gst || 0) > 0 ? getHStr(rFxi) : '';
+
+                const subSpan = (h) => h ? `<br/><span style="font-size:0.75rem; color:#64748b; font-weight:normal;">(${h})</span>` : '';
+
+                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' + subSpan(hMinT) : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' + subSpan(hMaxT) : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm${rs > 0 ? subSpan(hRain) : ''}</td><td style="padding:4px;">${maxG.toFixed(1)} km/h${subSpan(hGust)}</td><td style="padding:4px;">${maxFxi.toFixed(1)} km/h${subSpan(hFxi)}</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
             });
             syncHtml += `</tbody></table>
             <div class="btp-result-box">
@@ -1226,17 +1257,82 @@ Voici les données brutes :`;
             const asAll = dData.map(d => d.w_avg || 0);
             const hsAll = dData.map(d => d.humi || 0);
 
+            const formatHour = (r) => {
+                if (!r) return '';
+                if (r.h !== undefined && r.h !== null) {
+                    const hNum = String(r.h).replace('h', '').trim();
+                    return `${hNum.padStart(2, '0')}h`;
+                }
+                if (r.time) {
+                    const d = new Date(r.time);
+                    return `${String(d.getHours()).padStart(2, '0')}h`;
+                }
+                return '';
+            };
+
+            const validTempRows = dData.filter(d => d.temp !== null && d.temp !== undefined);
+            const minTempRow = validTempRows.length ? validTempRows.reduce((a, b) => b.temp < a.temp ? b : a, validTempRows[0]) : null;
+            const maxTempRow = validTempRows.length ? validTempRows.reduce((a, b) => b.temp > a.temp ? b : a, validTempRows[0]) : null;
+            const hMinT = formatHour(minTempRow);
+            const hMaxT = formatHour(maxTempRow);
+
+            const rainRows = dData.filter(d => (d.rain || 0) > 0);
+            const maxRainRow = rainRows.length ? rainRows.reduce((a, b) => (b.rain || 0) > (a.rain || 0) ? b : a, rainRows[0]) : null;
+            const hRain = formatHour(maxRainRow);
+
+            const maxGustRow = dData.length ? dData.reduce((a, b) => (b.w_gst || 0) > (a.w_gst || 0) ? b : a, dData[0]) : null;
+            const hGust = maxGustRow && (maxGustRow.w_gst || 0) > 0 ? formatHour(maxGustRow) : '';
+
+            const maxFxiRow = dData.length ? dData.reduce((a, b) => (b.w_fxi || b.w_gst || 0) > (a.w_fxi || a.w_gst || 0) ? b : a, dData[0]) : null;
+            const hFxi = maxFxiRow && (maxFxiRow.w_fxi || maxFxiRow.w_gst || 0) > 0 ? formatHour(maxFxiRow) : '';
+
+            const maxAvgRow = dData.length ? dData.reduce((a, b) => (b.w_avg || 0) > (a.w_avg || 0) ? b : a, dData[0]) : null;
+            const hAvg = maxAvgRow && (maxAvgRow.w_avg || 0) > 0 ? formatHour(maxAvgRow) : '';
+
+            const maxHumiRow = dData.length ? dData.reduce((a, b) => (b.humi || 0) > (a.humi || 0) ? b : a, dData[0]) : null;
+            const hHumi = maxHumiRow && (maxHumiRow.humi || 0) > 0 ? formatHour(maxHumiRow) : '';
+
             let sumH = ""; let sumR = "";
             const thStyle = 'background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;';
-            if (annexCols.temp) { sumH += `<th style="${thStyle}">T. Min</th><th style="${thStyle}">T. Max</th>`; sumR += `<td>${tsAll.length ? Math.min(...tsAll).toFixed(1) : '--'}°</td><td>${tsAll.length ? Math.max(...tsAll).toFixed(1) : '--'}°</td>`; }
-            if (annexCols.rain) { sumH += `<th style="${thStyle}">Pluie Tot.</th>`; sumR += `<td>${rsAll.reduce((a, b) => a + b, 0).toFixed(1)} mm</td>`; }
-            if (annexCols.snow) { sumH += `<th style="${thStyle}">Neige Tot.</th>`; sumR += `<td>${ssAll.reduce((a, b) => a + b, 0).toFixed(1)} cm</td>`; }
-            if (annexCols.windAvgPdf) { sumH += `<th style="${thStyle}">Vent Moy. Max</th>`; sumR += `<td>${asAll.length ? Math.round(Math.max(...asAll)) : 0} km/h</td>`; }
-            if (annexCols.windG) { sumH += `<th style="${thStyle}">FXI 3s Max</th>`; sumR += `<td>${gsAll.length ? Math.round(Math.max(...gsAll)) : 0} km/h</td>`; }
-            if (annexCols.windFxi) { sumH += `<th style="${thStyle}">FXI Max</th>`; sumR += `<td>${fxiAll.length ? Math.round(Math.max(...fxiAll)) : 0} km/h</td>`; }
-            if (annexCols.humi) { sumH += `<th style="${thStyle}">Hum. Max</th>`; sumR += `<td>${hsAll.length ? Math.max(...hsAll).toFixed(1) : 0}%</td>`; }
-            if (annexCols.soil) { sumH += `<th style="${thStyle}">Hum. Sol</th>`; sumR += `<td>${soilVal || '--'}%</td>`; }
-            if (annexCols.fog) { sumH += `<th style="${thStyle}">Brouillard</th>`; sumR += `<td>${forceFog ? 'OUI' : 'NON'}</td>`; }
+            const subBadge = (h) => h ? `<br/><span style="font-size:0.75rem; color:#64748b; font-weight:normal;">(${h})</span>` : '';
+
+            if (annexCols.temp) { 
+                sumH += `<th style="${thStyle}">T. Min</th><th style="${thStyle}">T. Max</th>`; 
+                sumR += `<td>${tsAll.length ? Math.min(...tsAll).toFixed(1) : '--'}°${subBadge(hMinT)}</td><td>${tsAll.length ? Math.max(...tsAll).toFixed(1) : '--'}°${subBadge(hMaxT)}</td>`; 
+            }
+            if (annexCols.rain) { 
+                const rTot = rsAll.reduce((a, b) => a + b, 0);
+                sumH += `<th style="${thStyle}">Pluie Tot.</th>`; 
+                sumR += `<td>${rTot.toFixed(1)} mm${rTot > 0 ? subBadge(hRain) : ''}</td>`; 
+            }
+            if (annexCols.snow) { 
+                sumH += `<th style="${thStyle}">Neige Tot.</th>`; 
+                sumR += `<td>${ssAll.reduce((a, b) => a + b, 0).toFixed(1)} cm</td>`; 
+            }
+            if (annexCols.windAvgPdf) { 
+                sumH += `<th style="${thStyle}">Vent Moy. Max</th>`; 
+                sumR += `<td>${asAll.length ? Math.round(Math.max(...asAll)) : 0} km/h${subBadge(hAvg)}</td>`; 
+            }
+            if (annexCols.windG) { 
+                sumH += `<th style="${thStyle}">FXI 3s Max</th>`; 
+                sumR += `<td>${gsAll.length ? Math.round(Math.max(...gsAll)) : 0} km/h${subBadge(hGust)}</td>`; 
+            }
+            if (annexCols.windFxi) { 
+                sumH += `<th style="${thStyle}">FXI Max</th>`; 
+                sumR += `<td>${fxiAll.length ? Math.round(Math.max(...fxiAll)) : 0} km/h${subBadge(hFxi)}</td>`; 
+            }
+            if (annexCols.humi) { 
+                sumH += `<th style="${thStyle}">Hum. Max</th>`; 
+                sumR += `<td>${hsAll.length ? Math.max(...hsAll).toFixed(1) : 0}%${subBadge(hHumi)}</td>`; 
+            }
+            if (annexCols.soil) { 
+                sumH += `<th style="${thStyle}">Hum. Sol</th>`; 
+                sumR += `<td>${soilVal || '--'}%</td>`; 
+            }
+            if (annexCols.fog) { 
+                sumH += `<th style="${thStyle}">Brouillard</th>`; 
+                sumR += `<td>${forceFog ? 'OUI' : 'NON'}</td>`; 
+            }
 
             part1 += `<div class="btp-keep-together"><h3 class="btp-section-title">2. RÉSUMÉ DU JOUR – ${date}</h3><table class="btp-table-period"><thead><tr>${sumH}</tr></thead><tbody><tr>${sumR}</tr></tbody></table></div>`;
             part1 += `</div>`; // Fin section 1
