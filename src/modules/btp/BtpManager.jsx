@@ -1140,37 +1140,7 @@ Voici les données brutes :`;
                 });
                 if (dayIsKo) daysKO.add(date);
 
-                const getHStr = (row) => {
-                    if (!row) return '';
-                    if (row.h !== undefined && row.h !== null) {
-                        return String(row.h).replace('h', '').trim().padStart(2, '0') + 'h';
-                    }
-                    if (row.time) {
-                        const d = new Date(row.time);
-                        return String(d.getHours()).padStart(2, '0') + 'h';
-                    }
-                    return '';
-                };
-
-                const vRows = rows.filter(d => d.temp !== null && d.temp !== undefined);
-                const rMinT = vRows.length ? vRows.reduce((a, b) => b.temp < a.temp ? b : a, vRows[0]) : null;
-                const rMaxT = vRows.length ? vRows.reduce((a, b) => b.temp > a.temp ? b : a, vRows[0]) : null;
-                const hMinT = getHStr(rMinT);
-                const hMaxT = getHStr(rMaxT);
-
-                const rainRows = rows.filter(d => (d.rain || 0) > 0);
-                const rRain = rainRows.length ? rainRows.reduce((a, b) => (b.rain || 0) > (a.rain || 0) ? b : a, rainRows[0]) : null;
-                const hRain = getHStr(rRain);
-
-                const rGust = rows.length ? rows.reduce((a, b) => (b.w_gst || 0) > (a.w_gst || 0) ? b : a, rows[0]) : null;
-                const hGust = rGust && (rGust.w_gst || 0) > 0 ? getHStr(rGust) : '';
-
-                const rFxi = rows.length ? rows.reduce((a, b) => (b.w_fxi || b.w_gst || 0) > (a.w_fxi || a.w_gst || 0) ? b : a, rows[0]) : null;
-                const hFxi = rFxi && (rFxi.w_fxi || rFxi.w_gst || 0) > 0 ? getHStr(rFxi) : '';
-
-                const subSpan = (h) => h ? `<br/><span style="font-size:0.75rem; color:#64748b; font-weight:normal;">(${h})</span>` : '';
-
-                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' + subSpan(hMinT) : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' + subSpan(hMaxT) : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm${rs > 0 ? subSpan(hRain) : ''}</td><td style="padding:4px;">${maxG.toFixed(1)} km/h${subSpan(hGust)}</td><td style="padding:4px;">${maxFxi.toFixed(1)} km/h${subSpan(hFxi)}</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
+                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${maxG.toFixed(1)} km/h</td><td style="padding:4px;">${maxFxi.toFixed(1)} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
             });
             syncHtml += `</tbody></table>
             <div class="btp-result-box">
