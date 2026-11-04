@@ -177,26 +177,8 @@ export const weatherAPI = {
                         }));
                 }
             } catch (errH) {
-                console.warn("[API] DPClim hourly not available, trying daily fallback:", errH);
-            }
-
-            // 2. Fallback direct DPClim Quotidien certifié (disponible sur 100% des stations)
-            const dpDaily = await meteoFranceClimService.fetchStationHistory(stationId, sStr, eStr, onProgress);
-            if (dpDaily && dpDaily.length > 0) {
-                const expanded = [];
-                dpDaily
-                    .filter(day => day.date >= startDate && day.date <= endDate)
-                    .forEach(day => {
-                        const [y, m, d] = day.date.split('-').map(Number);
-                        const tMoy = day.tm !== null ? day.tm : (day.tx !== null && day.tn !== null ? parseFloat(((day.tx + day.tn) / 2).toFixed(1)) : 15);
-                        expanded.push(
-                            { date: day.date, time: new Date(y, m - 1, d, 6, 0), temp: day.tn, hum: 85, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.4), gust: Math.round((day.fxi || 0) * 0.6), pres: 1015, timestamp_raw: new Date(y, m - 1, d, 6, 0).toISOString() },
-                            { date: day.date, time: new Date(y, m - 1, d, 10, 0), temp: tMoy, hum: 75, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.6), gust: Math.round((day.fxi || 0) * 0.8), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 10, 0).toISOString() },
-                            { date: day.date, time: new Date(y, m - 1, d, 14, 0), temp: day.tx, hum: 60, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.7), gust: day.fxi || 0, pres: 1013, timestamp_raw: new Date(y, m - 1, d, 14, 0).toISOString() },
-                            { date: day.date, time: new Date(y, m - 1, d, 18, 0), temp: tMoy, hum: 70, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.5), gust: Math.round((day.fxi || 0) * 0.7), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 18, 0).toISOString() }
-                        );
-                    });
-                return expanded;
+                // ponytail: pas de fallback synthétique — on veut toujours les vraies données horaires 0h-23h
+                console.error("[API] DPClim hourly failed, no fallback:", errH);
             }
 
             return [];

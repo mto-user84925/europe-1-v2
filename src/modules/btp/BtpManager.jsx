@@ -735,12 +735,13 @@ Voici les données brutes :`;
                     h: rowH,
                     h_local: obs.h_local !== undefined ? obs.h_local : rowH,
                     h_utc: obs.h_utc !== undefined ? obs.h_utc : rowH,
+                    time: obs.time || dt,
                     temp: obs.temp,
                     rain: obs.rain || 0,
                     snow: 0,
-                    w_avg: obs.wind,
-                    w_gst: obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s : (obs.gust || 0),
-                    w_fxi: obs.fxi !== undefined && obs.fxi !== null ? obs.fxi : (obs.gust || 0),
+                    w_avg: obs.wind !== null && obs.wind !== undefined ? Math.round(obs.wind) : 0,
+                    w_gst: Math.round(obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s : (obs.gust || 0)),
+                    w_fxi: Math.round(obs.fxi !== undefined && obs.fxi !== null ? obs.fxi : (obs.gust || 0)),
                     humi: obs.hum,
                     vv: obs.vv
                 });
@@ -1140,7 +1141,7 @@ Voici les données brutes :`;
                 });
                 if (dayIsKo) daysKO.add(date);
 
-                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${maxG.toFixed(1)} km/h</td><td style="padding:4px;">${maxFxi.toFixed(1)} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
+                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${Math.round(maxG)} km/h</td><td style="padding:4px;">${Math.round(maxFxi)} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
             });
             syncHtml += `</tbody></table>
             <div class="btp-result-box">
@@ -1229,13 +1230,24 @@ Voici les données brutes :`;
 
             const formatHour = (r) => {
                 if (!r) return '';
-                if (r.h !== undefined && r.h !== null) {
-                    const hNum = String(r.h).replace('h', '').trim();
-                    return `${hNum.padStart(2, '0')}h`;
-                }
                 if (r.time) {
-                    const d = new Date(r.time);
-                    return `${String(d.getHours()).padStart(2, '0')}h`;
+                    const d = r.time instanceof Date ? r.time : new Date(r.time);
+                    if (!isNaN(d.getTime())) {
+                        const hh = String(d.getHours()).padStart(2, '0');
+                        const mm = String(d.getMinutes()).padStart(2, '0');
+                        return `${hh}h${mm}`;
+                    }
+                }
+                if (r.h !== undefined && r.h !== null) {
+                    const s = String(r.h).replace('h', '').trim();
+                    if (s.includes(':')) {
+                        const [hh, mm] = s.split(':');
+                        return `${hh.padStart(2, '0')}h${(mm || '00').padStart(2, '0')}`;
+                    }
+                    const num = parseInt(s, 10);
+                    if (!isNaN(num)) {
+                        return `${String(num).padStart(2, '0')}h00`;
+                    }
                 }
                 return '';
             };

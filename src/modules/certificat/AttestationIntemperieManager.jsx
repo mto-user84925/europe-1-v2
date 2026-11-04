@@ -535,32 +535,49 @@ const AttestationIntemperieManager = () => {
                     };
                 }
                 csvDays[k].rows.push(row);
+                const formatHourWithMin = (r) => {
+                    if (!r) return '';
+                    if (r.time) {
+                        const d = r.time instanceof Date ? r.time : new Date(r.time);
+                        if (!isNaN(d.getTime())) {
+                            return `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+                        }
+                    }
+                    const clean = String(r.h !== undefined ? r.h : (r.h_local !== undefined ? r.h_local : '')).replace('h', '').trim();
+                    if (clean.includes(':')) {
+                        const [hh, mm] = clean.split(':');
+                        return `${hh.padStart(2, '0')}h${(mm || '00').padStart(2, '0')}`;
+                    }
+                    const n = parseInt(clean, 10);
+                    return isNaN(n) ? '' : `${String(n).padStart(2, '0')}h00`;
+                };
+                const rowHStr = formatHourWithMin(row);
                 if (row.tmin !== null && row.tmin < csvDays[k].tmin) {
                     csvDays[k].tmin = row.tmin;
-                    csvDays[k].tminTime = `${row.h}h`;
+                    csvDays[k].tminTime = rowHStr;
                 }
                 if (row.tmax !== null && row.tmax > csvDays[k].tmax) {
                     csvDays[k].tmax = row.tmax;
-                    csvDays[k].tmaxTime = `${row.h}h`;
+                    csvDays[k].tmaxTime = rowHStr;
                 }
                 if (row.tmin === null && row.tmax === null && row.temp !== 0) {
-                    if (row.temp < csvDays[k].tmin) { csvDays[k].tmin = row.temp; csvDays[k].tminTime = `${row.h}h`; }
-                    if (row.temp > csvDays[k].tmax) { csvDays[k].tmax = row.temp; csvDays[k].tmaxTime = `${row.h}h`; }
+                    if (row.temp < csvDays[k].tmin) { csvDays[k].tmin = row.temp; csvDays[k].tminTime = rowHStr; }
+                    if (row.temp > csvDays[k].tmax) { csvDays[k].tmax = row.temp; csvDays[k].tmaxTime = rowHStr; }
                 }
                 const rVal = row.rain || 0;
                 csvDays[k].rainTotal += rVal;
                 if (rVal > (csvDays[k].rainMaxH || 0)) {
                     csvDays[k].rainMaxH = rVal;
-                    csvDays[k].rainMaxTime = `${row.h}h`;
+                    csvDays[k].rainMaxTime = rowHStr;
                 }
                 if (row.w_gst > csvDays[k].gustMax) {
                     csvDays[k].gustMax = row.w_gst;
-                    csvDays[k].gustTime = `${row.h}h`;
+                    csvDays[k].gustTime = rowHStr;
                 }
                 const fVal = row.rawFxi || row.w_gst || 0;
                 if (fVal > csvDays[k].fxiMax) {
                     csvDays[k].fxiMax = fVal;
-                    csvDays[k].fxiTime = `${row.h}h`;
+                    csvDays[k].fxiTime = rowHStr;
                 }
             });
 
@@ -788,7 +805,7 @@ const AttestationIntemperieManager = () => {
                     }
                     const t = (obs.temp !== undefined && obs.temp !== null && !isNaN(obs.temp) && obs.temp > -90) ? obs.temp : null;
                     const d = new Date(obs.time);
-                    const hStr = (obs.h_local !== undefined ? obs.h_local : d.getHours()) + 'h' + (d.getMinutes() > 0 ? String(d.getMinutes()).padStart(2, '0') : '');
+                    const hStr = `${String(obs.h_local !== undefined ? obs.h_local : d.getHours()).padStart(2, '0')}h${String(d.getMinutes() || 0).padStart(2, '0')}`;
                     if (t !== null) {
                         if (t < dayMap[dateKey].tmin) {
                             dayMap[dateKey].tmin = t;

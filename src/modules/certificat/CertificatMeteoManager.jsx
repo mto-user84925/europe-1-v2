@@ -1237,8 +1237,8 @@ const CertificatMeteoManager = () => {
             </tr>`;
         };
 
-        const formatTime = (d) => d ? `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${d.getHours()}h${d.getMinutes().toString().padStart(2, '0')}` : '-';
-        const formatTimeShort = (d) => d ? `${d.getHours()}h${d.getMinutes().toString().padStart(2, '0')}` : '-';
+        const formatTime = (d) => d ? `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}` : '-';
+        const formatTimeShort = (d) => d ? `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}` : '-';
 
         // Use appropriate time format depending if it's a multi-day period or single day
         const timeDisplay = (d) => isPeriod ? formatTime(d) : formatTimeShort(d);
@@ -1925,7 +1925,7 @@ Phénomène: ${certType}
 OBSERVATIONS STATION ${stationMeteoTemp === stationMeteoRain && stationMeteoRain === stationMeteoWind ? stationMeteoTemp : `Temp: ${stationMeteoTemp || '?'}, Pluie: ${stationMeteoRain || '?'}, Vent: ${stationMeteoWind || '?'}`} :
 - Température Min / Max : ${stats.tempMin}°C / ${stats.tempMax}°C
     - Pluie cumulée: ${stats.rainTotal.toFixed(1)} mm
-        - Rafale Max: ${stats.windGustMax} km / h ${stats.windGustTime ? `(le ${stats.windGustTime.toLocaleDateString('fr-FR')})` : ''}
+        - Rafale Max: ${Math.round(stats.windGustMax)} km/h ${stats.windGustTime ? `(le ${stats.windGustTime.toLocaleDateString('fr-FR')} à ${String(stats.windGustTime.getHours()).padStart(2, '0')}h${String(stats.windGustTime.getMinutes()).padStart(2, '0')})` : ''}
 - Intensité Pluie Max: ${stats.rainMaxH?.toFixed(1) || '-'} mm / h
 
 Ce relevé est certifié conforme aux données de la station météorologique de référence.
