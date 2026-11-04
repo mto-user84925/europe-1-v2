@@ -20,7 +20,7 @@ const BtpManager = () => {
     ]);
     const [globalData, setGlobalData] = useState({});
     const [rules, setRules] = useState([]);
-    const [annexCols, setAnnexCols] = useState({ temp: true, rain: true, snow: true, windA: true, windG: true, humi: true, soil: true, fog: true, windAvgPdf: false });
+    const [annexCols, setAnnexCols] = useState({ temp: true, rain: true, snow: true, windA: true, windG: true, windFxi: true, humi: true, soil: true, fog: true, windAvgPdf: false });
     const [emitterName, setEmitterName] = useState('MÉTÉO CLIMAT PRO');
     const [txEnt, setTxEnt] = useState('400 rue Paul Lafargue\n59283 RAIMBEAUCOURT');
     const [txCli, setTxCli] = useState('');
@@ -117,7 +117,7 @@ const BtpManager = () => {
     const fileInputRef = useRef(null);
     const csvFileInputRef = useRef(null);
 
-    const colsLabels = { temp: "Température", rain: "Pluie", snow: "Neige", windA: "Vent Moyen", windG: "Rafales", humi: "Humidité Air", soil: "Humidité Sol", fog: "Brouillard", windAvgPdf: "Vent Moyen (PDF)" };
+    const colsLabels = { temp: "Température", rain: "Pluie", snow: "Neige", windA: "Vent Moyen", windG: "FXI 3s (OMM)", windFxi: "FXI (Brut)", humi: "Humidité Air", soil: "Humidité Sol", fog: "Brouillard", windAvgPdf: "Vent Moyen (PDF)" };
 
     const AI_PROMPT = `Agis comme un expert en nettoyage de données.
 Je vais te coller ci-dessous des données météorologiques brutes, copiées verticalement depuis un site web.
@@ -553,9 +553,11 @@ Voici les données brutes :`;
                         const rr1 = parseVal(cols, idxRR1) ?? 0;
                         const ffMS = parseVal(cols, idxFF);
                         const ffKmh = ffMS !== null ? Math.round(ffMS * 3.6) : null;
-                        // Rafale normalisée 3 secondes UNIQUEMENT (FXI3S) - Exclusion totale du FXI
+                        // Rafale normalisée 3s (FXI3S) et rafale instantanée brute (FXI)
                         const fxi3sMS = parseVal(cols, idxFXI3S);
-                        const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+                        const fxi3sKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+                        const fxiMS = parseVal(cols, idxFXI);
+                        const fxiRawKmh = fxiMS !== null ? Math.round(fxiMS * 3.6) : null;
                         const u = parseVal(cols, idxU);
                         const vv = parseVal(cols, idxVV);
 
@@ -570,8 +572,9 @@ Voici les données brutes :`;
                             temp: temp !== null ? temp : (tx !== null && tn !== null ? parseFloat(((tx + tn) / 2).toFixed(1)) : null),
                             rain: rr1,
                             snow: 0,
-                            w_avg: ffKmh || (fxiKmh ? Math.round(fxiKmh * 0.6) : 0),
-                            w_gst: fxiKmh || 0,
+                            w_avg: ffKmh || (fxi3sKmh ? Math.round(fxi3sKmh * 0.6) : (fxiRawKmh ? Math.round(fxiRawKmh * 0.6) : 0)),
+                            w_gst: fxi3sKmh || fxiRawKmh || 0,
+                            w_fxi: fxiRawKmh || fxi3sKmh || 0,
                             humi: u || 0,
                             vv: vv
                         });
@@ -736,7 +739,8 @@ Voici les données brutes :`;
                     rain: obs.rain || 0,
                     snow: 0,
                     w_avg: obs.wind,
-                    w_gst: obs.gust,
+                    w_gst: obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s : (obs.gust || 0),
+                    w_fxi: obs.fxi !== undefined && obs.fxi !== null ? obs.fxi : (obs.gust || 0),
                     humi: obs.hum,
                     vv: obs.vv
                 });
@@ -1113,7 +1117,7 @@ Voici les données brutes :`;
 
             syncHtml += `<h3 class="btp-section-title" style="margin-top:10px; text-transform:uppercase; font-size:0.9rem; margin-bottom:5px;">3. BILAN EXPLOITATION / INTEMPÉRIES</h3>
             <table class="btp-table-period" style="font-size: ${totalDays > 15 ? '0.7rem' : '0.8rem'}; page-break-inside: auto; border-collapse: collapse;">
-                <thead><tr><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">Date</th><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">T. Min/Max</th><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">Pluie</th><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">Vent Max</th><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">Statut</th></tr></thead><tbody>`;
+                <thead><tr><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">Date</th><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">T. Min/Max</th><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">Pluie</th><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">FXI 3s</th><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">FXI</th><th style="padding:4px; background-color:#1e293b !important; color:white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">Statut</th></tr></thead><tbody>`;
 
             Object.entries(globalData || {}).filter(([k]) => k !== '__metadata').sort((a, b) => {
                 const partsA = a[0].split('/');
@@ -1127,6 +1131,7 @@ Voici les données brutes :`;
                 const ts = rows.map(d => d.temp).filter(v => v !== null);
                 const rs = rows.reduce((a, b) => a + (b.rain || 0), 0);
                 const maxG = rows.length > 0 ? Math.max(...rows.map(d => d.w_gst || 0)) : 0;
+                const maxFxi = rows.length > 0 ? Math.max(...rows.map(d => d.w_fxi || d.w_gst || 0)) : 0;
                 totalRainPeriod += rs;
                 let dayIsKo = false;
                 rules.forEach(r => {
@@ -1134,7 +1139,7 @@ Voici les données brutes :`;
                     if (affectsActive && calculateKoV96(r, dataObj.rows, dataObj.soil, dataObj.forceHeat, dataObj.forceFroze, dataObj.fog)) dayIsKo = true;
                 });
                 if (dayIsKo) daysKO.add(date);
-                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${maxG.toFixed(1)} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
+                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${maxG.toFixed(1)} km/h</td><td style="padding:4px;">${maxFxi.toFixed(1)} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
             });
             syncHtml += `</tbody></table>
             <div class="btp-result-box">
@@ -1217,6 +1222,7 @@ Voici les données brutes :`;
             const rsAll = dData.map(d => d.rain || 0);
             const ssAll = dData.map(d => d.snow || 0);
             const gsAll = dData.map(d => d.w_gst || 0);
+            const fxiAll = dData.map(d => d.w_fxi || d.w_gst || 0);
             const asAll = dData.map(d => d.w_avg || 0);
             const hsAll = dData.map(d => d.humi || 0);
 
@@ -1226,7 +1232,8 @@ Voici les données brutes :`;
             if (annexCols.rain) { sumH += `<th style="${thStyle}">Pluie Tot.</th>`; sumR += `<td>${rsAll.reduce((a, b) => a + b, 0).toFixed(1)} mm</td>`; }
             if (annexCols.snow) { sumH += `<th style="${thStyle}">Neige Tot.</th>`; sumR += `<td>${ssAll.reduce((a, b) => a + b, 0).toFixed(1)} cm</td>`; }
             if (annexCols.windAvgPdf) { sumH += `<th style="${thStyle}">Vent Moy. Max</th>`; sumR += `<td>${asAll.length ? Math.round(Math.max(...asAll)) : 0} km/h</td>`; }
-            if (annexCols.windG) { sumH += `<th style="${thStyle}">Rafale Max</th>`; sumR += `<td>${gsAll.length ? Math.round(Math.max(...gsAll)) : 0} km/h</td>`; }
+            if (annexCols.windG) { sumH += `<th style="${thStyle}">FXI 3s Max</th>`; sumR += `<td>${gsAll.length ? Math.round(Math.max(...gsAll)) : 0} km/h</td>`; }
+            if (annexCols.windFxi) { sumH += `<th style="${thStyle}">FXI Max</th>`; sumR += `<td>${fxiAll.length ? Math.round(Math.max(...fxiAll)) : 0} km/h</td>`; }
             if (annexCols.humi) { sumH += `<th style="${thStyle}">Hum. Max</th>`; sumR += `<td>${hsAll.length ? Math.max(...hsAll).toFixed(1) : 0}%</td>`; }
             if (annexCols.soil) { sumH += `<th style="${thStyle}">Hum. Sol</th>`; sumR += `<td>${soilVal || '--'}%</td>`; }
             if (annexCols.fog) { sumH += `<th style="${thStyle}">Brouillard</th>`; sumR += `<td>${forceFog ? 'OUI' : 'NON'}</td>`; }
@@ -1245,7 +1252,8 @@ Voici les données brutes :`;
             if (annexCols.rain) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">Pluie</th>";
             if (annexCols.snow) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">Neige</th>";
             if (annexCols.windAvgPdf) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">V.Moy</th>";
-            if (annexCols.windG) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">Raf.</th>";
+            if (annexCols.windG) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">FXI 3s</th>";
+            if (annexCols.windFxi) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">FXI</th>";
             if (annexCols.humi) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">Hum.</th>";
             part2 += `</tr></thead><tbody>`;
             dData.forEach(r => {
@@ -1255,6 +1263,7 @@ Voici les données brutes :`;
                 if (annexCols.snow) part2 += `<td>${parseFloat(r.snow || 0).toFixed(1)}</td>`;
                 if (annexCols.windAvgPdf) part2 += `<td>${Math.round(r.w_avg || 0)}</td>`;
                 if (annexCols.windG) part2 += `<td>${Math.round(r.w_gst || 0)}</td>`;
+                if (annexCols.windFxi) part2 += `<td>${Math.round(r.w_fxi || r.w_gst || 0)}</td>`;
                 if (annexCols.humi) part2 += `<td>${Math.round(r.humi || 0)}%</td>`;
                 part2 += `</tr>`;
             });

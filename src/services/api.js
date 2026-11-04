@@ -169,6 +169,8 @@ export const weatherAPI = {
                             rain: obs.rain,
                             wind: obs.wind,
                             gust: obs.gust,
+                            fxi: obs.fxi !== undefined ? obs.fxi : obs.gust,
+                            fxi3s: obs.fxi3s !== undefined ? obs.fxi3s : obs.gust,
                             pres: obs.pres,
                             vv: obs.vv,
                             timestamp_raw: obs.time && typeof obs.time.toISOString === 'function' ? obs.time.toISOString() : String(obs.time || '')

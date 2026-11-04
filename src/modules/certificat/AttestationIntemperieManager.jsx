@@ -403,6 +403,9 @@ const AttestationIntemperieManager = () => {
                         const ffKmh = ffMS !== null ? Math.round(ffMS * 3.6) : null;
                         const fxi3sMS = parseVal(cols, idxFXI3S);
                         const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+                        const idxFXI = headers.indexOf('FXI');
+                        const fxiMS = parseVal(cols, idxFXI);
+                        const fxiRawKmh = fxiMS !== null ? Math.round(fxiMS * 3.6) : null;
 
                         let tempVal = temp !== null ? temp : (tx !== null && tn !== null ? parseFloat(((tx + tn) / 2).toFixed(1)) : (tn !== null ? tn : (tx !== null ? tx : 0)));
 
@@ -415,9 +418,9 @@ const AttestationIntemperieManager = () => {
                             tmin: tn,
                             tmax: tx,
                             rain: rr1,
-                            w_avg: ffKmh || (fxiKmh ? Math.round(fxiKmh * 0.6) : 0),
-                            w_gst: fxiKmh || 0,
-                            rawFxi: fxiKmh || 0
+                            w_avg: ffKmh || (fxi3sKmh ? Math.round(fxi3sKmh * 0.6) : (fxiRawKmh ? Math.round(fxiRawKmh * 0.6) : 0)),
+                            w_gst: fxiKmh || fxiRawKmh || 0,
+                            rawFxi: fxiRawKmh || fxiKmh || 0
                         });
                     });
                 } else {
@@ -520,23 +523,43 @@ const AttestationIntemperieManager = () => {
                     csvDays[k] = {
                         rows: [],
                         tmin: 99,
+                        tminTime: '',
                         tmax: -99,
+                        tmaxTime: '',
                         rainTotal: 0,
+                        rainMaxH: 0,
+                        rainMaxTime: '',
                         gustMax: 0,
-                        gustTime: 'N/A'
+                        gustTime: 'N/A',
+                        fxiMax: 0
                     };
                 }
                 csvDays[k].rows.push(row);
-                if (row.tmin !== null && row.tmin < csvDays[k].tmin) csvDays[k].tmin = row.tmin;
-                if (row.tmax !== null && row.tmax > csvDays[k].tmax) csvDays[k].tmax = row.tmax;
-                if (row.tmin === null && row.tmax === null && row.temp !== 0) {
-                    if (row.temp < csvDays[k].tmin) csvDays[k].tmin = row.temp;
-                    if (row.temp > csvDays[k].tmax) csvDays[k].tmax = row.temp;
+                if (row.tmin !== null && row.tmin < csvDays[k].tmin) {
+                    csvDays[k].tmin = row.tmin;
+                    csvDays[k].tminTime = `${row.h}h`;
                 }
-                csvDays[k].rainTotal += (row.rain || 0);
+                if (row.tmax !== null && row.tmax > csvDays[k].tmax) {
+                    csvDays[k].tmax = row.tmax;
+                    csvDays[k].tmaxTime = `${row.h}h`;
+                }
+                if (row.tmin === null && row.tmax === null && row.temp !== 0) {
+                    if (row.temp < csvDays[k].tmin) { csvDays[k].tmin = row.temp; csvDays[k].tminTime = `${row.h}h`; }
+                    if (row.temp > csvDays[k].tmax) { csvDays[k].tmax = row.temp; csvDays[k].tmaxTime = `${row.h}h`; }
+                }
+                const rVal = row.rain || 0;
+                csvDays[k].rainTotal += rVal;
+                if (rVal > (csvDays[k].rainMaxH || 0)) {
+                    csvDays[k].rainMaxH = rVal;
+                    csvDays[k].rainMaxTime = `${row.h}h`;
+                }
                 if (row.w_gst > csvDays[k].gustMax) {
                     csvDays[k].gustMax = row.w_gst;
                     csvDays[k].gustTime = `${row.h}h`;
+                }
+                const fVal = row.rawFxi || row.w_gst || 0;
+                if (fVal > csvDays[k].fxiMax) {
+                    csvDays[k].fxiMax = fVal;
                 }
             });
 
@@ -747,25 +770,50 @@ const AttestationIntemperieManager = () => {
                         dayMap[dateKey] = {
                             rows: [],
                             tmin: 99,
+                            tminTime: '',
                             tmax: -99,
+                            tmaxTime: '',
                             rainTotal: 0,
+                            rainMaxH: 0,
+                            rainMaxTime: '',
                             gustMax: 0,
-                            gustTime: ''
+                            gustTime: '',
+                            fxiMax: 0
                         };
                     }
                     const t = (obs.temp !== undefined && obs.temp !== null && !isNaN(obs.temp) && obs.temp > -90) ? obs.temp : null;
+                    const d = new Date(obs.time);
+                    const hStr = (obs.h_local !== undefined ? obs.h_local : d.getHours()) + 'h' + (d.getMinutes() > 0 ? String(d.getMinutes()).padStart(2, '0') : '');
                     if (t !== null) {
-                        dayMap[dateKey].tmin = Math.min(dayMap[dateKey].tmin, t);
-                        dayMap[dateKey].tmax = Math.max(dayMap[dateKey].tmax, t);
+                        if (t < dayMap[dateKey].tmin) {
+                            dayMap[dateKey].tmin = t;
+                            dayMap[dateKey].tminTime = hStr;
+                        }
+                        if (t > dayMap[dateKey].tmax) {
+                            dayMap[dateKey].tmax = t;
+                            dayMap[dateKey].tmaxTime = hStr;
+                        }
                     }
-                    dayMap[dateKey].rainTotal += (obs.rain || 0);
-                    const g = obs.gust || obs.w_gst || 0;
-                    if (g > dayMap[dateKey].gustMax) {
-                        dayMap[dateKey].gustMax = g;
-                        const d = new Date(obs.time);
-                        dayMap[dateKey].gustTime = d.getHours() + 'h' + (d.getMinutes() > 0 ? d.getMinutes() : '');
+                    const r = Number(obs.rain) || 0;
+                    dayMap[dateKey].rainTotal += r;
+                    if (r > (dayMap[dateKey].rainMaxH || 0)) {
+                        dayMap[dateKey].rainMaxH = r;
+                        dayMap[dateKey].rainMaxTime = hStr;
                     }
-                    dayMap[dateKey].rows.push(obs);
+                    const g3s = obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s : (obs.gust || obs.w_gst || 0);
+                    const gfxi = obs.fxi !== undefined && obs.fxi !== null ? obs.fxi : (obs.rawFxi || g3s);
+                    if (g3s > dayMap[dateKey].gustMax) {
+                        dayMap[dateKey].gustMax = g3s;
+                        dayMap[dateKey].gustTime = hStr;
+                    }
+                    if (gfxi > dayMap[dateKey].fxiMax) {
+                        dayMap[dateKey].fxiMax = gfxi;
+                    }
+                    dayMap[dateKey].rows.push({
+                        ...obs,
+                        fxi3s: g3s,
+                        rawFxi: gfxi
+                    });
                 });
                 return dayMap;
             };
@@ -820,10 +868,14 @@ const AttestationIntemperieManager = () => {
                     rows: combinedRows,
                     stats: {
                         tmin: tDay && tDay.tmin !== 99 ? tDay.tmin : 0,
+                        tminTime: tDay ? tDay.tminTime : '',
                         tmax: tDay && tDay.tmax !== -99 ? tDay.tmax : 0,
+                        tmaxTime: tDay ? tDay.tmaxTime : '',
                         rainTotal: rDay ? rDay.rainTotal : 0,
+                        rainMaxTime: rDay ? rDay.rainMaxTime : '',
                         gustMax: wDay ? wDay.gustMax : 0,
-                        gustTime: wDay ? wDay.gustTime : 'N/A'
+                        gustTime: wDay ? wDay.gustTime : 'N/A',
+                        fxiMax: wDay ? (wDay.fxiMax || wDay.gustMax) : 0
                     }
                 };
             });
@@ -1072,7 +1124,8 @@ const AttestationIntemperieManager = () => {
                                 <th style="border: 1px solid #000;">Pluie (mm)<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoRain || stationMeteoTemp || stationMeteo)}</span></th>
                                 <th style="border: 1px solid #000;">T&deg;mini<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
                                 <th style="border: 1px solid #000;">T&deg;maxi<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
-                                <th style="border: 1px solid #000;">Rafales<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
+                                <th style="border: 1px solid #000;">FXI 3s<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
+                                <th style="border: 1px solid #000;">FXI Brut<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1106,15 +1159,22 @@ const AttestationIntemperieManager = () => {
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${isRain || isStandardRain ? '<span style="color:#e11d48; font-weight:900;">INTEMPÉRIES</span>' : getRainLabel(s.rainTotal)}
+                                            ${s.rainMaxTime ? `<span style="font-size:6.5pt; color:#64748b;"><br/>(Pic: ${s.rainMaxTime})</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${getTempMiniLabel(s.tmin, showPersonalization ? Math.min(0, limitTemp) : 0)}
+                                            ${s.tminTime ? `<span style="font-size:6.5pt; color:#64748b;"><br/>(${s.tminTime})</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${getTempMaxiLabel(s.tmax, showPersonalization ? limitTempMax : 99)}
+                                            ${s.tmaxTime ? `<span style="font-size:6.5pt; color:#64748b;"><br/>(${s.tmaxTime})</span>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${getWindLabel(s.gustMax, showPersonalization ? Math.max(60, limitWind) : 60)}
+                                            ${s.gustTime && s.gustTime !== 'N/A' ? `<span style="font-size:6.5pt; color:#64748b;"><br/>(${s.gustTime})</span>` : ''}
+                                        </td>
+                                        <td style="border:1px solid #000; font-weight:bold; color:${(s.fxiMax || s.gustMax) >= 60 ? '#dc2626' : '#1e293b'};">
+                                            ${Math.round(s.fxiMax || s.gustMax)} km/h
                                         </td>
                                     </tr>
                                 `;
@@ -1163,7 +1223,8 @@ const AttestationIntemperieManager = () => {
                                 <th style="border:1px solid #000;">T. MIN (&deg;C)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
                                 <th style="border:1px solid #000;">T. MAX (&deg;C)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
                                 <th style="border:1px solid #000;">PLUIE (MM)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoRain || stationMeteoTemp || stationMeteo)}</span></th>
-                                <th style="border:1px solid #000;">VENT MAX (KM/H)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
+                                <th style="border:1px solid #000;">FXI 3S (KM/H)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
+                                <th style="border:1px solid #000;">FXI (KM/H)<br/><span style="font-size:6.5pt; font-weight:normal; opacity:0.85;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
                                 <th style="border:1px solid #000;">STATUT</th>
                             </tr>
                         </thead>
@@ -1180,10 +1241,25 @@ const AttestationIntemperieManager = () => {
                 return `
                                     <tr style="${dayIsKo ? 'background:#fff1f2;' : ''}">
                                         <td style="border:1px solid #000; font-weight:bold;">${d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: '2-digit', year: 'numeric' })}</td>
-                                        <td style="border:1px solid #000; ${s.tmin <= 0 ? 'color:red; font-weight:bold;' : ''}">${s.tmin.toFixed(1).replace('.', ',')}</td>
-                                        <td style="border:1px solid #000;">${s.tmax.toFixed(1).replace('.', ',')}</td>
-                                        <td style="border:1px solid #000; ${s.rainTotal >= 10 ? 'color:blue; font-weight:bold;' : ''}">${s.rainTotal.toFixed(1).replace('.', ',')}</td>
-                                        <td style="border:1px solid #000; ${s.gustMax >= 60 ? 'color:#ea580c; font-weight:bold;' : ''}">${Math.round(s.gustMax)}</td>
+                                        <td style="border:1px solid #000; ${s.tmin <= 0 ? 'color:red; font-weight:bold;' : ''}">
+                                            ${s.tmin.toFixed(1).replace('.', ',')}
+                                            ${s.tminTime ? `<span style="font-size:6.5pt; font-weight:normal; color:#64748b;"><br/>${s.tminTime}</span>` : ''}
+                                        </td>
+                                        <td style="border:1px solid #000;">
+                                            ${s.tmax.toFixed(1).replace('.', ',')}
+                                            ${s.tmaxTime ? `<span style="font-size:6.5pt; font-weight:normal; color:#64748b;"><br/>${s.tmaxTime}</span>` : ''}
+                                        </td>
+                                        <td style="border:1px solid #000; ${s.rainTotal >= 10 ? 'color:blue; font-weight:bold;' : ''}">
+                                            ${s.rainTotal.toFixed(1).replace('.', ',')}
+                                            ${s.rainMaxTime ? `<span style="font-size:6.5pt; font-weight:normal; color:#64748b;"><br/>Pic: ${s.rainMaxTime}</span>` : ''}
+                                        </td>
+                                        <td style="border:1px solid #000; ${s.gustMax >= 60 ? 'color:#ea580c; font-weight:bold;' : ''}">
+                                            ${Math.round(s.gustMax)}
+                                            ${s.gustTime && s.gustTime !== 'N/A' ? `<span style="font-size:6.5pt; font-weight:normal; color:#64748b;"><br/>${s.gustTime}</span>` : ''}
+                                        </td>
+                                        <td style="border:1px solid #000; ${(s.fxiMax || s.gustMax) >= 60 ? 'color:#dc2626; font-weight:bold;' : ''}">
+                                            ${Math.round(s.fxiMax || s.gustMax)}
+                                        </td>
                                         <td style="border:1px solid #000;">
                                             ${dayIsKo ? '<strong>INTEMPÉRIE</strong>' : '<span style="color:#64748b;">RAS</span>'}
                                         </td>

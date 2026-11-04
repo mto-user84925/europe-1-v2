@@ -90,6 +90,7 @@ const CertificatMeteoManager = () => {
         rain: true,
         windA: true,
         windG: true,
+        windFxi: true,
         humi: false,
         pres: false,
         vis: false
@@ -663,7 +664,10 @@ const CertificatMeteoManager = () => {
                         const ffMS = parseVal(cols, idxFF);
                         const ffKmh = ffMS !== null ? Math.round(ffMS * 3.6) : null;
                         const fxi3sMS = parseVal(cols, idxFXI3S);
-                        const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+                        const fxi3sKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+                        const idxFXI = headers.indexOf('FXI');
+                        const fxiMS = parseVal(cols, idxFXI);
+                        const fxiRawKmh = fxiMS !== null ? Math.round(fxiMS * 3.6) : null;
                         const u = parseVal(cols, idxU);
                         const vv = parseVal(cols, idxVV);
 
@@ -676,8 +680,9 @@ const CertificatMeteoManager = () => {
                             tmin: tn,
                             tmax: tx,
                             rain: rr1,
-                            w_avg: ffKmh || (fxiKmh ? Math.round(fxiKmh * 0.6) : 0),
-                            w_gst: fxiKmh || 0,
+                            w_avg: ffKmh || (fxi3sKmh ? Math.round(fxi3sKmh * 0.6) : (fxiRawKmh ? Math.round(fxiRawKmh * 0.6) : 0)),
+                            w_gst: fxi3sKmh || fxiRawKmh || 0,
+                            w_fxi: fxiRawKmh || fxi3sKmh || 0,
                             humi: u || 0,
                             pres: 1013,
                             vv: vv || 10
@@ -1013,7 +1018,8 @@ const CertificatMeteoManager = () => {
                 temp: obs.temp,
                 rain: obs.rain || 0,
                 w_avg: obs.wind,
-                w_gst: obs.gust,
+                w_gst: obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s : (obs.gust || 0),
+                w_fxi: obs.fxi !== undefined && obs.fxi !== null ? obs.fxi : (obs.gust || 0),
                 humi: obs.hum,
                 pres: obs.pres,
                 vv: obs.vv
@@ -1021,6 +1027,7 @@ const CertificatMeteoManager = () => {
 
             // Calcul des stats de la période
             const windMaxRow = rows.reduce((prev, curr) => (Number(prev.w_gst) >= Number(curr.w_gst) ? prev : curr), rows[0]);
+            const fxiMaxRow = rows.reduce((prev, curr) => (Number(prev.w_fxi || prev.w_gst || 0) >= Number(curr.w_fxi || curr.w_gst || 0) ? prev : curr), rows[0]);
             const rainMaxRow = rows.reduce((prev, curr) => (Number(prev.rain) >= Number(curr.rain) ? prev : curr), rows[0]);
 
             const tempMaxRow = rows.reduce((prev, curr) => (Number(prev.temp) >= Number(curr.temp) ? prev : curr), rows[0]);
@@ -1034,7 +1041,9 @@ const CertificatMeteoManager = () => {
                 rainTotal: rows.reduce((acc, r) => acc + (Number(r.rain) || 0), 0),
                 snowTotal: rows.reduce((acc, r) => acc + (Number(r.temp) <= 0 ? (Number(r.rain) || 0) : 0), 0),
                 windGustMax: windMaxRow.w_gst,
-                windGustMaxTime: windMaxRow.time, // Renamed to match usage
+                windGustMaxTime: windMaxRow.time,
+                windFxiMax: fxiMaxRow ? (fxiMaxRow.w_fxi || fxiMaxRow.w_gst || 0) : windMaxRow.w_gst,
+                windFxiMaxTime: fxiMaxRow ? fxiMaxRow.time : windMaxRow.time,
                 windAvgMax: Math.max(...rows.map(r => Number(r.w_avg) || 0)),
                 rainMaxH: rainMaxRow.rain,
                 rainMaxTime: rainMaxRow.time,
@@ -1234,16 +1243,22 @@ const CertificatMeteoManager = () => {
         if (showWindParams) {
             const t = stats.windGustMaxTime ? new Date(stats.windGustMaxTime) : null;
             const g = Math.round(stats.windGustMax);
-            addRow("Rafale Max", `${g} km/h`, t ? timeDisplay(t) : '-');
+            const gFxi = stats.windFxiMax ? Math.round(stats.windFxiMax) : g;
+            const tFxi = stats.windFxiMaxTime ? new Date(stats.windFxiMaxTime) : t;
+            addRow("Rafale Max (FXI 3s OMM)", `${g} km/h`, t ? timeDisplay(t) : '-');
+            addRow("Rafale Max (FXI Brut)", `${gFxi} km/h`, tFxi ? timeDisplay(tFxi) : '-');
         }
         if (showRainParams) {
             const r = stats.rainTotal;
+            const rMaxTime = stats.rainMaxTime ? new Date(stats.rainMaxTime) : null;
+            const rMaxVal = stats.rainMaxH ? stats.rainMaxH.toFixed(1).replace('.', ',') : null;
+            const rainTimeLabel = (rMaxTime && stats.rainMaxH > 0) ? `Pic: ${rMaxVal} mm/h à ${timeDisplay(rMaxTime)}` : "Période";
 
             if (tLower.includes('neige')) {
                 const snow = stats.snowTotal || 0;
-                addRow("Cumul Neige (estimé)", `${snow.toFixed(1).replace('.', ',')} cm`, "Période");
+                addRow("Cumul Neige (estimé)", `${snow.toFixed(1).replace('.', ',')} cm`, rainTimeLabel);
             } else {
-                addRow("Cumul Pluie", `${r.toFixed(1).replace('.', ',')} mm`, "Période");
+                addRow("Cumul Pluie", `${r.toFixed(1).replace('.', ',')} mm`, rainTimeLabel);
             }
         }
         if (showTempParams) {
@@ -1252,8 +1267,10 @@ const CertificatMeteoManager = () => {
 
             if (tLower.includes('froid') || tLower.includes('gel') || tLower.includes('neige') || tLower.includes('verglas')) {
                 addRow("Temp. Min", `${stats.tempMin}°C`, tMin ? timeDisplay(tMin) : '-');
+                addRow("Temp. Max", `${stats.tempMax}°C`, tMax ? timeDisplay(tMax) : '-');
             } else {
                 addRow("Temp. Max", `${stats.tempMax}°C`, tMax ? timeDisplay(tMax) : '-');
+                addRow("Temp. Min", `${stats.tempMin}°C`, tMin ? timeDisplay(tMin) : '-');
             }
         }
         return htmlRows;
@@ -1386,7 +1403,8 @@ const CertificatMeteoManager = () => {
                             ${annexCols.temp ? '<th>TEMP. (°C)</th>' : ''}
                             ${annexCols.rain ? '<th>PLUIE (MM)</th>' : ''}
                             ${annexCols.windA ? '<th>VENT (KM/H)</th>' : ''}
-                            ${annexCols.windG ? '<th>RAFALES (KM/H)</th>' : ''}
+                            ${annexCols.windG ? '<th>FXI 3S (KM/H)</th>' : ''}
+                            ${annexCols.windFxi ? '<th>FXI BRUT (KM/H)</th>' : ''}
                             ${annexCols.humi ? '<th>HUMIDITÉ (%)</th>' : ''}
                             ${annexCols.pres ? '<th>PRESSION (HPA)</th>' : ''}
                             ${annexCols.vis ? '<th>VISIBILITÉ (KM)</th>' : ''}
@@ -1401,6 +1419,7 @@ const CertificatMeteoManager = () => {
                                 ${annexCols.rain ? `<td ${r.rain > 0 ? 'style="color:#2563eb; font-weight:bold;"' : ''}>${r.rain > 0 ? r.rain.toFixed(1).replace('.', ',') : '0,0'}</td>` : ''}
                                 ${annexCols.windA ? `<td>${r.w_avg !== null && r.w_avg !== undefined ? Math.round(r.w_avg) : '-'}</td>` : ''}
                                 ${annexCols.windG ? `<td ${r.w_gst > 60 ? 'style="color:#dc2626; font-weight:bold;"' : ''}>${r.w_gst !== null && r.w_gst !== undefined ? Math.round(r.w_gst) : '-'}</td>` : ''}
+                                ${annexCols.windFxi ? `<td ${(r.w_fxi || r.w_gst) > 60 ? 'style="color:#ea580c; font-weight:bold;"' : ''}>${r.w_fxi !== null && r.w_fxi !== undefined ? Math.round(r.w_fxi) : (r.w_gst !== null ? Math.round(r.w_gst) : '-')}</td>` : ''}
                                 ${annexCols.humi ? `<td>${r.humi !== undefined && r.humi !== null ? Math.round(r.humi) : '-'}%</td>` : ''}
                                 ${annexCols.pres ? `<td>${r.pres !== undefined && r.pres !== null ? Math.round(r.pres) : '-'}</td>` : ''}
                                 ${annexCols.vis ? `<td>${r.vv !== undefined && r.vv !== null ? Math.round(r.vv) : '-'}</td>` : ''}
@@ -2175,7 +2194,11 @@ Ce relevé est certifié conforme aux données de la station météorologique de
                                                 </label>
                                                 <label className="flex items-center gap-2 text-xs cursor-pointer">
                                                     <input type="checkbox" checked={annexCols.windG} onChange={e => setAnnexCols(prev => ({ ...prev, windG: e.target.checked }))} />
-                                                    Rafales (km/h)
+                                                    FXI 3s OMM (km/h)
+                                                </label>
+                                                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                                    <input type="checkbox" checked={annexCols.windFxi} onChange={e => setAnnexCols(prev => ({ ...prev, windFxi: e.target.checked }))} />
+                                                    FXI Brut (km/h)
                                                 </label>
                                                 <label className="flex items-center gap-2 text-xs cursor-pointer">
                                                     <input type="checkbox" checked={annexCols.humi} onChange={e => setAnnexCols(prev => ({ ...prev, humi: e.target.checked }))} />

@@ -33,9 +33,13 @@ const DailyExtremes = () => {
         { id: 'dept', label: 'Dpt' },
         { id: 'altitude', label: 'Alt.' },
         { id: 'temp_min', label: 'Tn' },
+        { id: 'temp_min_time', label: 'Heure Tn' },
         { id: 'temp_max', label: 'Tx' },
+        { id: 'temp_max_time', label: 'Heure Tx' },
         { id: 'rain_total', label: 'Pluie' },
-        { id: 'wind_gust_max', label: 'Rafale' },
+        { id: 'rain_max_time', label: 'Heure Pluie' },
+        { id: 'wind_gust_max', label: 'FXI 3s' },
+        { id: 'wind_gust_fxi', label: 'FXI Brut' },
         { id: 'wind_gust_time', label: 'Heure Rafale' },
         { id: 'wind_mean_max', label: 'Vent Moy' },
         { id: 'sun_total', label: 'Soleil' },
@@ -313,7 +317,7 @@ const DailyExtremes = () => {
                         const val = row[c.id];
                         if (val === null || val === undefined) return '';
                         if (c.id === 'stationName') return `"${val}"`;
-                        if (c.id === 'wind_gust_time' && val) {
+                        if ((c.id === 'wind_gust_time' || c.id === 'temp_min_time' || c.id === 'temp_max_time' || c.id === 'rain_max_time') && val) {
                             return new Date(val).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
                         }
                         return typeof val === 'number' ? val.toFixed(1) : val;
@@ -548,7 +552,8 @@ const DailyExtremes = () => {
                                     {activeTab === 'vent' && (
                                         <>
                                             <th onClick={() => handleSort('wind_mean_max')} className="right">Vent Moy Max <SortIcon colKey="wind_mean_max" /></th>
-                                            <th onClick={() => handleSort('wind_gust_max')} className="right">Rafale Max <SortIcon colKey="wind_gust_max" /></th>
+                                            <th onClick={() => handleSort('wind_gust_max')} className="right">FXI 3s Max <SortIcon colKey="wind_gust_max" /></th>
+                                            <th onClick={() => handleSort('wind_gust_fxi')} className="right">FXI Max <SortIcon colKey="wind_gust_fxi" /></th>
                                             <th className="center">Heure Rafale</th>
                                         </>
                                     )}
@@ -605,9 +610,36 @@ const DailyExtremes = () => {
 
                                             {activeTab === 'resume' && (
                                                 <>
-                                                    <td className="right">{renderCell(row.temp_min, 1, '°', `val-tn ${getTnClass(row.temp_min)}`)}</td>
-                                                    <td className="right">{renderCell(row.temp_max, 1, '°', `val-tx ${getTxClass(row.temp_max)}`)}</td>
-                                                    <td className="right">{renderCell(row.rain_total, 1, 'mm', `val-rain ${getRainClass(row.rain_total)}`)}</td>
+                                                    <td className="right">
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                                                            {renderCell(row.temp_min, 1, '°', `val-tn ${getTnClass(row.temp_min)}`)}
+                                                            {row.temp_min_time && (
+                                                                <span className="time-sub" style={{ fontSize: '0.7rem', color: '#94a3b8', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                                                                    à {new Date(row.temp_min_time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="right">
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                                                            {renderCell(row.temp_max, 1, '°', `val-tx ${getTxClass(row.temp_max)}`)}
+                                                            {row.temp_max_time && (
+                                                                <span className="time-sub" style={{ fontSize: '0.7rem', color: '#94a3b8', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                                                                    à {new Date(row.temp_max_time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="right">
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                                                            {renderCell(row.rain_total, 1, 'mm', `val-rain ${getRainClass(row.rain_total)}`)}
+                                                            {row.rain_max_time && row.rain_total > 0 && (
+                                                                <span className="time-sub" style={{ fontSize: '0.7rem', color: '#94a3b8', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                                                                    à {new Date(row.rain_max_time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
                                                     <td className="right">
                                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
                                                             {renderCell(row.wind_gust_max, 0, ' km/h', `val-wind ${getWindClass(row.wind_gust_max)}`)}
@@ -629,6 +661,7 @@ const DailyExtremes = () => {
                                                 <>
                                                     <td className="right">{renderCell(row.wind_mean_max, 0, ' km/h', `val-wind ${getWindClass(row.wind_mean_max)}`)}</td>
                                                     <td className="right">{renderCell(row.wind_gust_max, 0, ' km/h', `val-wind ${getWindClass(row.wind_gust_max)}`)}</td>
+                                                    <td className="right">{renderCell(row.wind_gust_fxi || row.wind_gust_max, 0, ' km/h', `val-wind ${getWindClass(row.wind_gust_fxi || row.wind_gust_max)}`)}</td>
                                                     <td className="center time-cell">
                                                         {row.wind_gust_time ? new Date(row.wind_gust_time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : <Missing />}
                                                     </td>
@@ -637,8 +670,26 @@ const DailyExtremes = () => {
 
                                             {activeTab === 'temp' && (
                                                 <>
-                                                    <td className="right">{renderCell(row.temp_min, 1, '°C', `val-tn ${getTnClass(row.temp_min)}`)}</td>
-                                                    <td className="right">{renderCell(row.temp_max, 1, '°C', `val-tx ${getTxClass(row.temp_max)}`)}</td>
+                                                    <td className="right">
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                                                            {renderCell(row.temp_min, 1, '°C', `val-tn ${getTnClass(row.temp_min)}`)}
+                                                            {row.temp_min_time && (
+                                                                <span className="time-sub" style={{ fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                                                                    à {new Date(row.temp_min_time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="right">
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                                                            {renderCell(row.temp_max, 1, '°C', `val-tx ${getTxClass(row.temp_max)}`)}
+                                                            {row.temp_max_time && (
+                                                                <span className="time-sub" style={{ fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                                                                    à {new Date(row.temp_max_time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
                                                 </>
                                             )}
 

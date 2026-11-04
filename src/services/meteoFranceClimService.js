@@ -353,11 +353,13 @@ export const meteoFranceClimService = {
             const tm = parseVal(idxTM) ?? parseVal(idxTNTXM) ?? (tn !== null && tx !== null ? parseFloat(((tn + tx) / 2).toFixed(1)) : null);
             const rr = parseVal(idxRR) ?? 0;
             
-            // Rafale maximale normalisée sur 3 secondes UNIQUEMENT (FXI3S) - Exclusion totale du FXI
+            // Rafale normalisée 3 secondes (FXI3S) et rafale instantanée brute (FXI)
             const fxi3sMS = parseVal(idxFXI3S);
-            const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
-            const hxi = parseHour(idxHXI3S);
-            const dxi = parseVal(idxDXI3S);
+            const fxi3sKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+            const fxiMS = parseVal(idxFXI);
+            const fxiRawKmh = fxiMS !== null ? Math.round(fxiMS * 3.6) : null;
+            const hxi = parseHour(idxHXI3S) || parseHour(idxHXI);
+            const dxi = parseVal(idxDXI3S) ?? parseVal(idxDXI);
 
             results.push({
                 stationId: idxPoste !== -1 ? cols[idxPoste] : '',
@@ -370,9 +372,11 @@ export const meteoFranceClimService = {
                 tm: tm,
                 tampli: parseVal(idxTAMPLI),
                 rr: rr,
-                fxi: fxiKmh,
-                fxiMS: activeFxiMS,
-                fxiPeakKmh: fxiMS !== null ? Math.round(fxiMS * 3.6) : null,
+                fxi: fxiRawKmh,
+                fxi3s: fxi3sKmh,
+                fxiMS: fxiMS ?? fxi3sMS,
+                fxiPeakKmh: fxiRawKmh,
+                gust: fxi3sKmh ?? fxiRawKmh,
                 dxi: dxi,
                 hxi: hxi,
                 ff: parseVal(idxFF),
@@ -596,9 +600,11 @@ export const meteoFranceClimService = {
             const ffMS = parseVal(cols, idxFF);
             const ffKmh = ffMS !== null ? Math.round(ffMS * 3.6) : null;
             
-            // Rafale maximale normalisée sur 3 secondes UNIQUEMENT (FXI3S) - Exclusion totale du FXI
+            // Rafale normalisée 3 secondes (FXI3S) et rafale instantanée (FXI)
             const fxi3sMS = parseVal(cols, idxFXI3S);
-            const fxiKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+            const fxi3sKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
+            const fxiMS = parseVal(cols, idxFXI);
+            const fxiRawKmh = fxiMS !== null ? Math.round(fxiMS * 3.6) : null;
 
             const u = parseVal(cols, idxU);
             const pmer = parseVal(cols, idxPMER) ?? parseVal(cols, idxPSTAT);
@@ -620,7 +626,9 @@ export const meteoFranceClimService = {
                 tx: tx,
                 rain: rr1,
                 wind: ffKmh,
-                gust: fxiKmh,
+                gust: fxi3sKmh ?? fxiRawKmh,
+                fxi: fxiRawKmh,
+                fxi3s: fxi3sKmh,
                 hum: u,
                 pres: pmer,
                 vv: vv,
