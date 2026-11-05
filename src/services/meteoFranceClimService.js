@@ -3,7 +3,7 @@
  * Permet de récupérer les archives quotidiennes (1950 - Hier) pour toutes les stations françaises.
  */
 
-import { meteoAuth } from './meteoFranceAuth';
+import { meteoAuth } from './meteoFranceAuth.js';
 
 // ponytail: Météo-France DPClim fournit nativement les en-têtes CORS (Access-Control-Allow-Origin: *).
 // Appel direct vers l'API officielle sans passer par un proxy Vercel sujet aux 502 ROUTER_EXTERNAL_TARGET_ERROR.
@@ -340,12 +340,28 @@ export const meteoFranceClimService = {
                 return isNaN(num) ? null : num;
             };
 
+            const year = parseInt(rawDate.substring(0, 4), 10);
+            const month = parseInt(rawDate.substring(4, 6), 10);
+            const day = parseInt(rawDate.substring(6, 8), 10);
+
+            // ponytail: DPClim quotidien fournit HTN, HTX, HXI, HXI3S en UTC brut (ex: 1503 UTC).
+            // Conversion stricte en Heure Légale française (Europe/Paris : UTC+2 été, UTC+1 hiver).
             const parseHour = (idx) => {
                 if (idx === -1) return '';
                 const v = cols[idx];
-                if (!v || v.length < 3) return '';
-                const padded = v.padStart(4, '0');
-                return `${padded.substring(0, 2)}h${padded.substring(2, 4)}`;
+                if (!v || v === '' || v === 'null') return '';
+                const s = String(v).trim().padStart(4, '0');
+                const hU = parseInt(s.slice(0, 2), 10);
+                const mU = parseInt(s.slice(2, 4), 10);
+                if (isNaN(hU) || isNaN(mU) || hU > 23 || mU > 59) return '';
+                const dtU = new Date(Date.UTC(year, month - 1, day, hU, mU, 0));
+                const parts = new Intl.DateTimeFormat('fr-FR', {
+                    timeZone: 'Europe/Paris',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                }).formatToParts(dtU);
+                const hh = parts.find(p => p.type === 'hour')?.value || String(hU).padStart(2, '0');
+                const mm = parts.find(p => p.type === 'minute')?.value || String(mU).padStart(2, '0');
+                return `${hh}h${mm}`;
             };
 
             const tn = parseVal(idxTN);

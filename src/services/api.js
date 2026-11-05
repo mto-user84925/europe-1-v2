@@ -94,20 +94,7 @@ export const weatherAPI = {
                     const dpHourly = await meteoFranceClimService.fetchStationHourlyHistory(stationId, dateStr, dateStr);
                     if (dpHourly && dpHourly.length > 0) {
                         finalData = dpHourly;
-                    } else {
-                        // Fallback direct DPClim quotidien
-                        const dpDaily = await meteoFranceClimService.fetchStationHistory(stationId, dateStr, dateStr);
-                        if (dpDaily && dpDaily.length > 0) {
-                            const day = dpDaily[0];
-                            const [y, m, d] = day.date.split('-').map(Number);
-                            const tMoy = day.tm !== null ? day.tm : (day.tx !== null && day.tn !== null ? parseFloat(((day.tx + day.tn) / 2).toFixed(1)) : 15);
-                            finalData = [
-                                { date: day.date, time: new Date(y, m - 1, d, 6, 0), temp: day.tn, hum: 85, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.4), gust: Math.round((day.fxi || 0) * 0.6), pres: 1015, timestamp_raw: new Date(y, m - 1, d, 6, 0).toISOString() },
-                                { date: day.date, time: new Date(y, m - 1, d, 10, 0), temp: tMoy, hum: 75, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.6), gust: Math.round((day.fxi || 0) * 0.8), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 10, 0).toISOString() },
-                                { date: day.date, time: new Date(y, m - 1, d, 14, 0), temp: day.tx, hum: 60, rain: (day.rr || 0) * 0.3, wind: Math.round((day.fxi || 0) * 0.7), gust: day.fxi || 0, pres: 1013, timestamp_raw: new Date(y, m - 1, d, 14, 0).toISOString() },
-                                { date: day.date, time: new Date(y, m - 1, d, 18, 0), temp: tMoy, hum: 70, rain: (day.rr || 0) * 0.2, wind: Math.round((day.fxi || 0) * 0.5), gust: Math.round((day.fxi || 0) * 0.7), pres: 1014, timestamp_raw: new Date(y, m - 1, d, 18, 0).toISOString() }
-                            ];
-                        }
+                    // ponytail: pas de données horaires synthétiques / interpolées. Zéro falsification météorologique.
                     }
                 } catch (errDPClim) {
                     console.warn("[API] Fallback DPClim:", errDPClim);
@@ -154,7 +141,8 @@ export const weatherAPI = {
                         .filter(obs => {
                             const dLocal = obs.date_local || obs.date;
                             const dUtc = obs.date_utc || obs.date;
-                            return (dLocal >= startDate && dLocal <= endDate) || (dUtc >= startDate && dUtc <= endDate);
+                            // ponytail: filtrage strict sur date civile locale (0h-23h59) évitant la fuite du lendemain 01h UTC
+                            return dLocal >= startDate && dLocal <= endDate;
                         })
                         .map(obs => ({
                             date: obs.date_local || obs.date || (obs.time ? (typeof obs.time.toLocaleDateString === 'function' ? obs.time.toLocaleDateString('fr-CA') : '') : ''),

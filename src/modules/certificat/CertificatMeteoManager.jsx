@@ -357,6 +357,7 @@ const CertificatMeteoManager = () => {
                                     }, validGustRows[0]);
                                     maxGustVal = Math.round(maxRow.fxi3s || maxRow.fxi);
                                     maxGustHour = maxRow.hxi || null;
+                                    maxGustDate = maxRow.date || null;
                                 }
 
                                 // Pluie cumulée
@@ -375,7 +376,8 @@ const CertificatMeteoManager = () => {
                                     name: s.name || s.id,
                                     dist: s.dist_km,
                                     maxGust: maxGustVal,
-                                    maxGustDate: maxGustHour,
+                                    maxGustHour: maxGustHour,
+                                    maxGustDate: maxGustDate,
                                     rain: hasRain ? totalRain.toFixed(1).replace('.', ',') : '-',
                                     hasRainMeasure: hasRain,
                                     minTemp: minTn !== null ? minTn.toFixed(1).replace('.', ',') : '-',
@@ -1082,17 +1084,22 @@ const CertificatMeteoManager = () => {
             const stats = {
                 tempMax: tempMaxRow.temp,
                 tempMaxTime: formatHourStr(tempMaxRow.htx_time, tempMaxRow.time),
+                tempMaxDate: tempMaxRow.date || (tempMaxRow.time instanceof Date ? tempMaxRow.time.toLocaleDateString('sv-SE') : null),
                 tempMin: tempMinRow.temp,
                 tempMinTime: formatHourStr(tempMinRow.htn_time, tempMinRow.time),
+                tempMinDate: tempMinRow.date || (tempMinRow.time instanceof Date ? tempMinRow.time.toLocaleDateString('sv-SE') : null),
                 rainTotal: rows.reduce((acc, r) => acc + (Number(r.rain) || 0), 0),
                 snowTotal: rows.reduce((acc, r) => acc + (Number(r.temp) <= 0 ? (Number(r.rain) || 0) : 0), 0),
                 windGustMax: Math.round(windMaxRow.w_gst),
                 windGustMaxTime: formatHourStr(windMaxRow.hfxi3s_time, windMaxRow.time),
+                windGustMaxDate: windMaxRow.date || (windMaxRow.time instanceof Date ? windMaxRow.time.toLocaleDateString('sv-SE') : null),
                 windFxiMax: Math.round(fxiMaxRow ? (fxiMaxRow.w_fxi || fxiMaxRow.w_gst || 0) : windMaxRow.w_gst),
                 windFxiMaxTime: formatHourStr(fxiMaxRow?.hfxi_time || fxiMaxRow?.hfxi3s_time || windMaxRow.hfxi3s_time, fxiMaxRow?.time || windMaxRow.time),
+                windFxiMaxDate: fxiMaxRow?.date || (fxiMaxRow?.time instanceof Date ? fxiMaxRow.time.toLocaleDateString('sv-SE') : null),
                 windAvgMax: Math.round(Math.max(...rows.map(r => Number(r.w_avg) || 0))),
                 rainMaxH: rainMaxRow.rain,
                 rainMaxTime: formatHourStr(null, rainMaxRow.time),
+                rainMaxDate: rainMaxRow.date || (rainMaxRow.time instanceof Date ? rainMaxRow.time.toLocaleDateString('sv-SE') : null),
                 humMax: Math.max(...rows.map(r => Number(r.humi) || 0)),
             };
 
@@ -1210,6 +1217,20 @@ const CertificatMeteoManager = () => {
     };
 
 
+    const parseDateSafe = (dStr) => {
+        if (!dStr) return null;
+        if (dStr instanceof Date) return isNaN(dStr.getTime()) ? null : dStr;
+        if (typeof dStr === 'string') {
+            if (dStr.includes('/')) {
+                const parts = dStr.split('/').map(Number);
+                if (parts[0] && parts[1] && parts[2]) return new Date(parts[2], parts[1] - 1, parts[0]);
+            }
+            const dt = new Date(dStr);
+            return isNaN(dt.getTime()) ? null : dt;
+        }
+        return null;
+    };
+
     const generateSynthesisText = (stats, rows) => {
         const startD = new Date(startDate);
         let dateLabel = `le ${startD.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}`;
@@ -1226,12 +1247,10 @@ const CertificatMeteoManager = () => {
 
         if (certType.includes('Vent') || certType.includes('Tempête') || certType.includes('Orage')) {
             const gustVal = Math.round(stats.windGustMax);
-            const gustTimeStr = typeof stats.windGustMaxTime === 'string' && stats.windGustMaxTime.includes('h')
-                ? `${new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} à ${stats.windGustMaxTime}`
-                : (() => {
-                    const gt = new Date(stats.windGustMaxTime || startDate);
-                    return !isNaN(gt.getTime()) ? `${gt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} à ${String(gt.getHours()).padStart(2, '0')}h${String(gt.getMinutes()).padStart(2, '0')}` : stats.windGustMaxTime;
-                })();
+            const peakDate = stats.windGustMaxDate || startDate;
+            const pDt = parseDateSafe(peakDate);
+            const peakDateStr = pDt ? pDt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : peakDate;
+            const gustTimeStr = stats.windGustMaxTime ? `${peakDateStr} à ${stats.windGustMaxTime}` : peakDateStr;
             const typeLabel = certType.includes('Orage') ? "un épisode orageux actif" : "un épisode venteux marqué";
 
             body = `${typeLabel}. Les relevés indiquent des rafales maximales atteignant <strong style="color: #c0392b; font-size: 11pt;">${gustVal} km/h</strong>. Ce pic d'intensité a été enregistré le <strong style="color: #c0392b;">${gustTimeStr}</strong>.`;
@@ -1244,14 +1263,18 @@ const CertificatMeteoManager = () => {
             body = `des conditions hivernales. Les températures sont descendues jusqu'à <strong style="color: #2980b9;">${stats.tempMin}°C</strong>, favorisant les phénomènes glissants ou neigeux.`;
 
         } else if (certType.includes('Canicule')) {
-            const maxTime = new Date(stats.tempMaxTime || startDate);
-            const timeStr = `${maxTime.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
-            body = `une vague de chaleur. Une température maximale de <strong style="color: #c0392b; font-size: 11pt;">${stats.tempMax}°C</strong> a été relevée le ${timeStr}.`;
+            const peakDate = stats.tempMaxDate || startDate;
+            const pDt = parseDateSafe(peakDate);
+            const peakDateStr = pDt ? pDt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : peakDate;
+            const hourSuffix = stats.tempMaxTime ? ` à ${stats.tempMaxTime}` : '';
+            body = `une vague de chaleur. Une température maximale de <strong style="color: #c0392b; font-size: 11pt;">${stats.tempMax}°C</strong> a été relevée le ${peakDateStr}${hourSuffix}.`;
 
         } else if (certType.includes('Froid') || certType.includes('Gel')) {
-            const minTime = new Date(stats.tempMinTime || startDate);
-            const timeStr = `${minTime.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
-            body = `une période de grand froid. Une température minimale de <strong style="color: #2980b9; font-size: 11pt;">${stats.tempMin}°C</strong> a été relevée le ${timeStr}.`;
+            const peakDate = stats.tempMinDate || startDate;
+            const pDt = parseDateSafe(peakDate);
+            const peakDateStr = pDt ? pDt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : peakDate;
+            const hourSuffix = stats.tempMinTime ? ` à ${stats.tempMinTime}` : '';
+            body = `une période de grand froid. Une température minimale de <strong style="color: #2980b9; font-size: 11pt;">${stats.tempMin}°C</strong> a été relevée le ${peakDateStr}${hourSuffix}.`;
 
         } else {
             body = `des conditions météorologiques notables en lien avec la demande.`;
@@ -1283,15 +1306,17 @@ const CertificatMeteoManager = () => {
             </tr>`;
         };
 
-        const formatTime = (d) => {
+        const formatTime = (d, rowDate = null) => {
             if (!d) return '-';
+            const dateRef = rowDate || startDate;
+            const dtObj = parseDateSafe(dateRef);
+            const datePrefix = (dtObj && !isNaN(dtObj.getTime())) ? dtObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' à ' : '';
+
             if (typeof d === 'string') {
-                if (d.includes('h')) {
-                    return (startDate ? new Date(startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' à ' : '') + d;
-                }
+                if (d.includes('h')) return datePrefix + d;
                 const dt = new Date(d);
                 if (!isNaN(dt.getTime())) return `${dt.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${String(dt.getHours()).padStart(2, '0')}h${String(dt.getMinutes()).padStart(2, '0')}`;
-                return d;
+                return datePrefix + d;
             }
             if (d instanceof Date) {
                 if (!isNaN(d.getTime())) return `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
@@ -1315,21 +1340,21 @@ const CertificatMeteoManager = () => {
         };
 
         // Use appropriate time format depending if it's a multi-day period or single day
-        const timeDisplay = (d) => isPeriod ? formatTime(d) : formatTimeShort(d);
+        const timeDisplay = (d, rowDate = null) => isPeriod ? formatTime(d, rowDate) : formatTimeShort(d);
 
         if (showWindParams) {
             const t = stats.windGustMaxTime;
             const g = Math.round(stats.windGustMax);
             const gFxi = stats.windFxiMax ? Math.round(stats.windFxiMax) : g;
             const tFxi = stats.windFxiMaxTime || t;
-            addRow("Rafale Max (FXI 3s OMM)", `${g} km/h`, t ? timeDisplay(t) : '-');
-            addRow("Rafale Max (FXI Brut)", `${gFxi} km/h`, tFxi ? timeDisplay(tFxi) : '-');
+            addRow("Rafale Max (FXI 3s OMM)", `${g} km/h`, t ? timeDisplay(t, stats.windGustMaxDate) : '-');
+            addRow("Rafale Max (FXI Brut)", `${gFxi} km/h`, tFxi ? timeDisplay(tFxi, stats.windFxiMaxDate) : '-');
         }
         if (showRainParams) {
             const r = stats.rainTotal;
             const rMaxTime = stats.rainMaxTime;
             const rMaxVal = stats.rainMaxH ? stats.rainMaxH.toFixed(1).replace('.', ',') : null;
-            const rainTimeLabel = (rMaxTime && stats.rainMaxH > 0) ? `Pic: ${rMaxVal} mm/h à ${timeDisplay(rMaxTime)}` : "Période";
+            const rainTimeLabel = (rMaxTime && stats.rainMaxH > 0) ? `Pic: ${rMaxVal} mm/h à ${timeDisplay(rMaxTime, stats.rainMaxDate)}` : "Période";
 
             if (tLower.includes('neige')) {
                 const snow = stats.snowTotal || 0;
@@ -1343,11 +1368,11 @@ const CertificatMeteoManager = () => {
             const tMin = stats.tempMinTime;
 
             if (tLower.includes('froid') || tLower.includes('gel') || tLower.includes('neige') || tLower.includes('verglas')) {
-                addRow("Temp. Min", `${stats.tempMin}°C`, tMin ? timeDisplay(tMin) : '-');
-                addRow("Temp. Max", `${stats.tempMax}°C`, tMax ? timeDisplay(tMax) : '-');
+                addRow("Temp. Min", `${stats.tempMin}°C`, tMin ? timeDisplay(tMin, stats.tempMinDate) : '-');
+                addRow("Temp. Max", `${stats.tempMax}°C`, tMax ? timeDisplay(tMax, stats.tempMaxDate) : '-');
             } else {
-                addRow("Temp. Max", `${stats.tempMax}°C`, tMax ? timeDisplay(tMax) : '-');
-                addRow("Temp. Min", `${stats.tempMin}°C`, tMin ? timeDisplay(tMin) : '-');
+                addRow("Temp. Max", `${stats.tempMax}°C`, tMax ? timeDisplay(tMax, stats.tempMaxDate) : '-');
+                addRow("Temp. Min", `${stats.tempMin}°C`, tMin ? timeDisplay(tMin, stats.tempMinDate) : '-');
             }
         }
         return htmlRows;
