@@ -1255,6 +1255,8 @@ Voici les données brutes :`;
                 const rs = rows.reduce((a, b) => a + (b.rain || 0), 0);
                 const maxG = rows.length > 0 ? Math.max(...rows.map(d => d.w_gst || 0)) : 0;
                 const maxFxi = rows.length > 0 ? Math.max(...rows.map(d => d.w_fxi || d.w_gst || 0)) : 0;
+                // FXI 3S dans le tableau récap synoptique : DPClim en priorité
+                const syncFxi3s = dataObj.officialFxi3s != null ? Math.round(dataObj.officialFxi3s) : Math.round(maxG);
                 totalRainPeriod += rs;
                 let dayIsKo = false;
                 rules.forEach(r => {
@@ -1263,7 +1265,7 @@ Voici les données brutes :`;
                 });
                 if (dayIsKo) daysKO.add(date);
 
-                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${Math.round(maxG)} km/h</td><td style="padding:4px;">${Math.round(maxFxi)} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
+                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${syncFxi3s} km/h</td><td style="padding:4px;">${Math.round(maxFxi)} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
             });
             syncHtml += `</tbody></table>
             <div class="btp-result-box">
@@ -1291,6 +1293,10 @@ Voici les données brutes :`;
             const forceHeat = dataObj.forceHeat;
             const forceFroze = dataObj.forceFroze;
             const forceFog = dataObj.fog;
+            // ponytail: FXI 3S valeur + horaire = DPClim exclusivement (paramètre officiel OMM)
+            // hxi est déjà converti en heure locale "HHhMM" par parseHour() dans meteoFranceClimService
+            const dpFxi3s = dataObj.officialFxi3s ?? null;
+            const dpHxiFormatted = dataObj.officialHxi || null;
 
             const commonHead = (title, subtitle = '') => `<div class="btp-doc-head">
                 <div style="flex: 0 0 220px; text-align: left;">${imgL}<div style="font-size:7.5pt;line-height:1.3;margin-top:2px;color:#1e293b;">${ent}${emitterInfo}</div></div>
@@ -1418,8 +1424,11 @@ Voici les données brutes :`;
                 sumR += `<td>${asAll.length ? Math.round(Math.max(...asAll)) : 0} km/h${subBadge(hAvg)}</td>`; 
             }
             if (annexCols.windG) { 
+                // FXI 3S : valeur + horaire depuis DPClim (officiel OMM), sinon Météociel 6mn
+                const fxi3sVal = dpFxi3s !== null ? Math.round(dpFxi3s) : (gsAll.length ? Math.round(Math.max(...gsAll)) : 0);
+                const fxi3sTime = dpHxiFormatted || hGust;
                 sumH += `<th style="${thStyle}">FXI 3s Max</th>`; 
-                sumR += `<td>${gsAll.length ? Math.round(Math.max(...gsAll)) : 0} km/h${subBadge(hGust)}</td>`; 
+                sumR += `<td>${fxi3sVal} km/h${subBadge(fxi3sTime)}</td>`; 
             }
             if (annexCols.windFxi) { 
                 sumH += `<th style="${thStyle}">FXI Max</th>`; 

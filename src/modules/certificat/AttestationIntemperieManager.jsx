@@ -974,6 +974,15 @@ const AttestationIntemperieManager = () => {
                 };
             });
 
+            // Override FXI 3S MAX + horaire avec DPClim officiel OMM (hxi déjà en heure locale "HHhMM")
+            allDateKeys.forEach(dateKey => {
+                const dpDay = stationDailyOfficials[stWind]?.[dateKey];
+                if (dpDay && combinedDays[dateKey]) {
+                    if (dpDay.fxi3s != null) combinedDays[dateKey].stats.gustMax = Math.round(dpDay.fxi3s);
+                    if (dpDay.hxi) combinedDays[dateKey].stats.gustTime = dpDay.hxi;
+                }
+            });
+
             // Tri des lignes par heure pour chaque jour
             Object.keys(combinedDays).forEach(dk => {
                 combinedDays[dk].rows.sort((a, b) => new Date(a.time) - new Date(b.time));
