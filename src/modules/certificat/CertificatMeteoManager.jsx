@@ -1605,7 +1605,8 @@ const CertificatMeteoManager = () => {
                     const tempValid = sub.filter(x => x.temp !== null && x.temp !== undefined && !isNaN(x.temp));
                     const tVal = tempValid.length > 0 ? tempValid[0].temp : null;
                     const rTot = sub.reduce((acc, x) => acc + (Number(x.rain) || 0), 0);
-                    const wAvg = Math.max(0, ...sub.map(x => Number(x.w_avg) || 0));
+                    const validAvg = sub.filter(x => x.w_avg !== null && x.w_avg !== undefined && !isNaN(x.w_avg));
+                    const wAvg = validAvg.length > 0 ? Math.round(validAvg.reduce((acc, x) => acc + Number(x.w_avg), 0) / validAvg.length) : 0;
                     const wGst = Math.max(0, ...sub.map(x => Number(x.w_gst) || 0));
                     const wFxi = Math.max(0, ...sub.map(x => Number(x.w_fxi || x.w_gst) || 0));
                     const humValid = sub.filter(x => x.humi !== null && x.humi !== undefined && !isNaN(x.humi));
