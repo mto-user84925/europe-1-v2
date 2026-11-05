@@ -6,69 +6,77 @@ import https from 'https';
 
 export default async function handler(req, res) {
     try {
-        // Extraire le chemin demandé (ex: temps-reel/obs_villes.php?code2=59606004&jour2=23&mois2=9&annee2=2026&affint=1)
-        const targetPath = req.query.path || (req.url.replace(/^\/api\/meteociel-proxy\??/, '').replace(/^path=/, ''));
-        
-        if (!targetPath) {
+        // Extraire le chemin demandé en préservant TOUS les paramètres de requête
+        // (ex: path=temps-reel/obs_villes.php, code2=59606004, jour2=1, mois2=9, annee2=2026, affint=1)
+        const basePath = req.query.path || (req.url.replace(/^\/api\/meteociel-proxy\??/, '').replace(/^path=/, ''));
+        if (!basePath) {
             return res.status(400).json({ error: 'Missing path parameter' });
         }
 
-        const cleanPath = targetPath.startsWith('/') ? targetPath.substring(1) : targetPath;
-        const targetUrl = `https://www.meteociel.fr/${cleanPath}`;
+        const queryParams = new URLSearchParams();
+        for (const [k, v] of Object.entries(req.query || {})) {
+            if (k !== 'path') queryParams.append(k, v);
+        }
+        const qs = queryParams.toString();
+        const rawPath = basePath + (qs ? (basePath.includes('?') ? '&' : '?') + qs : '');
+        const cleanPath = rawPath.startsWith('/') ? rawPath.substring(1) : rawPath;
 
-        const options = {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Referer': 'https://www.meteociel.fr/',
-                'Cookie': 'meteociel=57a0e34041b9c18fed3d0f2b2800ba53; archivebotok=1',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'same-origin',
-                'Sec-Fetch-User': '?1',
-                'Upgrade-Insecure-Requests': '1'
-            }
-        };
+        // 1. Tenter en priorité le proxy Netlify (IP rotatives CDN + cookie archivebotok=1)
+        const netlifyUrl = `https://visionary-chebakia-465960.netlify.app/api-meteociel/${cleanPath}`;
+        const meteocielDirectUrl = `https://www.meteociel.fr/${cleanPath}`;
 
-        const meteocielReq = https.get(targetUrl, options, (meteocielRes) => {
-            const chunks = [];
+        const isPastArchive = cleanPath.includes('archive=1') || cleanPath.includes('annee2=') || cleanPath.includes('mois2=');
 
-            meteocielRes.on('data', (chunk) => chunks.push(chunk));
-
-            meteocielRes.on('end', () => {
-                const buffer = Buffer.concat(chunks);
-
-                // Déterminer si la requête concerne une archive passée (mise en cache CDN permanente)
-                const isPastArchive = cleanPath.includes('archive=1') || cleanPath.includes('annee2=') || cleanPath.includes('mois2=');
-
-                // En-têtes de réponse
-                res.setHeader('Content-Type', 'text/html; charset=windows-1252');
-                res.setHeader('Access-Control-Allow-Origin', '*');
-                res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-
-                if (isPastArchive) {
-                    // Les archives passées ne changent jamais : cache Edge Vercel 1 an (31536000s)
-                    res.setHeader('Cache-Control', 'public, s-maxage=31536000, max-age=86400, stale-while-revalidate=604800');
-                } else {
-                    // Les relevés temps réel du jour expirent après 6 minutes
-                    res.setHeader('Cache-Control', 'public, s-maxage=360, max-age=360');
+        const fetchUpstream = (targetUrl) => new Promise((resolve, reject) => {
+            const options = {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Referer': 'https://www.meteociel.fr/',
+                    'Cookie': 'meteociel=57a0e34041b9c18fed3d0f2b2800ba53; archivebotok=1',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'same-origin',
+                    'Sec-Fetch-User': '?1',
+                    'Upgrade-Insecure-Requests': '1'
                 }
-
-                res.status(meteocielRes.statusCode || 200).send(buffer);
+            };
+            const reqUp = https.get(targetUrl, options, (resUp) => {
+                const chunks = [];
+                resUp.on('data', c => chunks.push(c));
+                resUp.on('end', () => resolve({ statusCode: resUp.statusCode || 200, buffer: Buffer.concat(chunks) }));
+            });
+            reqUp.on('error', reject);
+            reqUp.setTimeout(12000, () => {
+                reqUp.destroy();
+                reject(new Error('Timeout upstream (12s)'));
             });
         });
 
-        meteocielReq.on('error', (err) => {
-            console.error('[MeteocielProxy] Error fetching upstream:', err);
-            res.status(502).json({ error: 'Upstream Meteociel error: ' + err.message });
-        });
+        let result;
+        try {
+            result = await fetchUpstream(netlifyUrl);
+            if (result.statusCode >= 400) throw new Error(`Netlify HTTP ${result.statusCode}`);
+        } catch (_errNetlify) {
+            // Repli direct sur meteociel.fr
+            result = await fetchUpstream(meteocielDirectUrl);
+        }
 
-        meteocielReq.setTimeout(15000, () => {
-            meteocielReq.destroy();
-            res.status(504).json({ error: 'Meteociel gateway timeout (15s)' });
-        });
+        // En-têtes de réponse avec CORS universel
+        res.setHeader('Content-Type', 'text/html; charset=windows-1252');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
 
+        if (isPastArchive) {
+            // Les archives passées ne changent jamais : cache Edge Vercel 1 an
+            res.setHeader('Cache-Control', 'public, s-maxage=31536000, max-age=86400, stale-while-revalidate=604800');
+        } else {
+            // Les relevés temps réel du jour expirent après 6 minutes
+            res.setHeader('Cache-Control', 'public, s-maxage=360, max-age=360');
+        }
+
+        res.status(result.statusCode).send(result.buffer);
     } catch (e) {
         console.error('[MeteocielProxy] Fatal handler error:', e);
         res.status(500).json({ error: e.message });

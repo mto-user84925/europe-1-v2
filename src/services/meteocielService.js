@@ -2,9 +2,9 @@
  * Service pour récupérer et parser les données d'archives de Meteociel
  */
 
-// ponytail: Netlify en primaire (cookie archivebotok=1, zéro 429), Vercel Edge en fallback
+// ponytail: Proxy Vercel same-origin en primaire (relais Netlify server-side zéro CORS + cache Edge), Netlify direct en fallback
+const API_METEOCIEL = '/api-meteociel';
 const NETLIFY_BASE = 'https://visionary-chebakia-465960.netlify.app/api-meteociel';
-const API_METEOCIEL = '/api-meteociel'; // fallback Vercel Edge
 
 export const METEOCIEL_MODES = {
     TEMPERATURE_DIRECT: { id: '0', label: 'Température Actuelle (Direct)', unit: '°C' },
@@ -32,10 +32,10 @@ export const fetchMeteocielArchives = async (date, modeId) => {
 
         let response = null;
         try {
-            response = await fetch(NETLIFY_BASE + path);
-            if (!response.ok) throw new Error(`Netlify ${response.status}`);
-        } catch (_) {
             response = await fetch(API_METEOCIEL + path);
+            if (!response.ok) throw new Error(`Proxy ${response.status}`);
+        } catch (_) {
+            response = await fetch(NETLIFY_BASE + path);
         }
         if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
 
@@ -274,23 +274,23 @@ export const fetchStationObservations = async (stationId, date, isIntra = false)
 
         let html = '';
         try {
-            // 1. Netlify proxy (primaire — cookie archivebotok=1, zéro 429)
-            const response = await fetch(NETLIFY_BASE + path, { headers: BROWSER_CAMOUFLAGE_HEADERS });
-            if (!response.ok) throw new Error(`Netlify HTTP ${response.status}`);
+            // 1. Proxy Vercel same-origin (relais server-side vers Netlify visionary-chebakia, zéro CORS)
+            const response = await fetch(API_METEOCIEL + path);
+            if (!response.ok) throw new Error(`Proxy HTTP ${response.status}`);
             const buffer = await response.arrayBuffer();
             html = new TextDecoder('windows-1252').decode(buffer);
-        } catch (_netlifyErr) {
+        } catch (_proxyErr) {
             try {
-                // 2. Vercel Edge proxy (fallback)
-                const response = await fetch(API_METEOCIEL + path, { headers: BROWSER_CAMOUFLAGE_HEADERS });
-                if (!response.ok) throw new Error(`Vercel HTTP ${response.status}`);
+                // 2. Netlify direct en secours
+                const response = await fetch(NETLIFY_BASE + path);
+                if (!response.ok) throw new Error(`Netlify HTTP ${response.status}`);
                 const buffer = await response.arrayBuffer();
                 html = new TextDecoder('windows-1252').decode(buffer);
-            } catch (_vercelErr) {
+            } catch (_netlifyErr) {
                 // 3. AllOrigins CORS proxy (dernier recours)
                 const fullTarget = `https://www.meteociel.fr${path}`;
-                const backupResp = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(fullTarget)}`, { headers: BROWSER_CAMOUFLAGE_HEADERS });
-                if (!backupResp.ok) throw _vercelErr;
+                const backupResp = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(fullTarget)}`);
+                if (!backupResp.ok) throw _netlifyErr;
                 const buffer = await backupResp.arrayBuffer();
                 html = new TextDecoder('windows-1252').decode(buffer);
             }

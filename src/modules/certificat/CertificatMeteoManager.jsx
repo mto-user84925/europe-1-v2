@@ -977,7 +977,7 @@ const CertificatMeteoManager = () => {
             return;
         }
 
-        setStatus('⏳ Récupération des données DPClim Météo-France...');
+        setStatus('⏳ Récupération des observations Météociel & certification FXI 3S...');
         setGlobalData({});
 
         try {
@@ -1232,7 +1232,7 @@ const CertificatMeteoManager = () => {
             setStationMeteoTemp(sName);
             setStationMeteoRain(sName);
             setStationMeteoWind(sName);
-            setStatus('✅ Données DPClim récupérées avec succès.');
+            setStatus('✅ Observations Météociel et certification FXI 3S DPClim chargées.');
 
             refreshNearbyStations(startDate, finalEndDate);
 

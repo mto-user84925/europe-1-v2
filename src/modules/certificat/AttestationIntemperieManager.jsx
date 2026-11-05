@@ -731,7 +731,7 @@ const AttestationIntemperieManager = () => {
         }
 
         const finalEndDate = isPeriod ? endDate : startDate;
-        setStatus('⏳ Récupération des données Météo-France (DPClim)...');
+        setStatus('⏳ Récupération des relevés Météociel & certification FXI 3S...');
         setGlobalData(null);
 
         try {
@@ -1005,7 +1005,7 @@ const AttestationIntemperieManager = () => {
                 setStationMeteoWind(nameTemp);
             }
 
-            setStatus(`✅ ${allDateKeys.length} jours chargés avec succès via DPClim.`);
+            setStatus(`✅ ${allDateKeys.length} jours chargés avec succès (Météociel + FXI 3S DPClim).`);
             refreshNearbyStations(startDate, finalEndDate);
 
         } catch (e) {

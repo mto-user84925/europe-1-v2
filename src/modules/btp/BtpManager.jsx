@@ -688,12 +688,12 @@ Voici les données brutes :`;
             return;
         }
 
-        setStatus('⏳ Récupération des données Météo-France DPClim...');
+        setStatus('⏳ Récupération préalable certification FXI 3S DPClim...');
         const prevMetadata = globalData?.__metadata || {};
         setGlobalData({}); // Reset current data
 
         try {
-            // 1. Récupération préalable des indicateurs certifiés DPClim Météo-France (FXI 3s OMM, FXI Brut, Tx, Tn)
+            // 1. Récupération préalable des indicateurs certifiés DPClim (FXI 3s OMM et horaire HXI)
             let dailyOfficialMap = {};
             try {
                 const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
