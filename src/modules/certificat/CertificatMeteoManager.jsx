@@ -1597,6 +1597,50 @@ const CertificatMeteoManager = () => {
 
             const pageNum = index + 2; // Start at Page 2
 
+            // Agrégation heure par heure (exactement 24 lignes de 00h00 à 23h00)
+            const hourly24 = [];
+            for (let h = 0; h < 24; h++) {
+                const sub = dayRows.filter(r => r.h === h);
+                if (sub.length > 0) {
+                    const tempValid = sub.filter(x => x.temp !== null && x.temp !== undefined && !isNaN(x.temp));
+                    const tVal = tempValid.length > 0 ? tempValid[0].temp : null;
+                    const rTot = sub.reduce((acc, x) => acc + (Number(x.rain) || 0), 0);
+                    const wAvg = Math.max(0, ...sub.map(x => Number(x.w_avg) || 0));
+                    const wGst = Math.max(0, ...sub.map(x => Number(x.w_gst) || 0));
+                    const wFxi = Math.max(0, ...sub.map(x => Number(x.w_fxi || x.w_gst) || 0));
+                    const humValid = sub.filter(x => x.humi !== null && x.humi !== undefined && !isNaN(x.humi));
+                    const hVal = humValid.length > 0 ? humValid[0].humi : null;
+                    const presValid = sub.filter(x => x.pres !== null && x.pres !== undefined && !isNaN(x.pres));
+                    const pVal = presValid.length > 0 ? presValid[0].pres : null;
+                    const visValid = sub.filter(x => x.vv !== null && x.vv !== undefined && !isNaN(x.vv));
+                    const vVal = visValid.length > 0 ? visValid[0].vv : null;
+
+                    hourly24.push({
+                        h,
+                        temp: tVal,
+                        rain: rTot,
+                        w_avg: wAvg,
+                        w_gst: wGst,
+                        w_fxi: wFxi,
+                        humi: hVal,
+                        pres: pVal,
+                        vv: vVal
+                    });
+                } else {
+                    hourly24.push({
+                        h,
+                        temp: null,
+                        rain: 0,
+                        w_avg: 0,
+                        w_gst: 0,
+                        w_fxi: 0,
+                        humi: null,
+                        pres: null,
+                        vv: null
+                    });
+                }
+            }
+
             return `
             <div class="cert-page" style="page-break-before: always; border-top: 1px dashed #cbd5e1; display: flex; flex-direction: column;">
                 <div style="border: 2px solid #000; padding: 10px 15px; text-align: left; margin-top: 20px; margin-bottom: 20px;">
@@ -1634,11 +1678,8 @@ const CertificatMeteoManager = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        ${dayRows.map(r => {
-                            const dObj = r.time instanceof Date ? r.time : (r.time ? new Date(r.time) : null);
-                            const rowTime = (dObj && !isNaN(dObj.getTime()))
-                                ? `${String(dObj.getHours()).padStart(2, '0')}h${String(dObj.getMinutes()).padStart(2, '0')}`
-                                : `${String(r.h).padStart(2, '0')}h${String(r.minute || 0).padStart(2, '0')}`;
+                        ${hourly24.map(r => {
+                            const rowTime = `${String(r.h).padStart(2, '0')}h00`;
                             return `
                             <tr>
                                 <td style="color:#475569;">${dateShort}</td>

@@ -1430,9 +1430,9 @@ Voici les données brutes :`;
                 sumR += `<td>${asAll.length ? Math.round(Math.max(...asAll)) : 0} km/h${subBadge(hAvg)}</td>`; 
             }
             if (annexCols.windG) { 
-                // FXI 3S : valeur + horaire depuis DPClim (officiel OMM), sinon Météociel 6mn
+                // FXI 3S : valeur + horaire STRICTEMENT depuis DPClim (officiel OMM), Météociel uniquement si DPClim indisponible
                 const fxi3sVal = dpFxi3s !== null ? Math.round(dpFxi3s) : (gsAll.length ? Math.round(Math.max(...gsAll)) : 0);
-                const fxi3sTime = dpHxiFormatted || hGust;
+                const fxi3sTime = dpFxi3s !== null ? (dpHxiFormatted || '') : hGust;
                 sumH += `<th style="${thStyle}">FXI 3s Max</th>`; 
                 sumR += `<td>${fxi3sVal} km/h${subBadge(fxi3sTime)}</td>`; 
             }
@@ -1471,8 +1471,47 @@ Voici les données brutes :`;
             if (annexCols.windFxi) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">FXI</th>";
             if (annexCols.humi) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">Hum.</th>";
             part2 += `</tr></thead><tbody>`;
-            dData.forEach(r => {
-                const hourFormatted = formatHour(r) || `${String(r.h).padStart(2, '0')}h00`;
+            // Agrégation heure par heure (exactement 24 lignes de 00h00 à 23h00)
+            const hourly24Rows = [];
+            for (let h = 0; h < 24; h++) {
+                const sub = dData.filter(r => r.h === h);
+                if (sub.length > 0) {
+                    const tempValid = sub.filter(x => x.temp !== null && x.temp !== undefined && !isNaN(x.temp));
+                    const tVal = tempValid.length > 0 ? tempValid[0].temp : null;
+                    const rTot = sub.reduce((acc, x) => acc + (Number(x.rain) || 0), 0);
+                    const sTot = sub.reduce((acc, x) => acc + (Number(x.snow) || 0), 0);
+                    const wAvg = Math.max(0, ...sub.map(x => Number(x.w_avg) || 0));
+                    const wGst = Math.max(0, ...sub.map(x => Number(x.w_gst) || 0));
+                    const wFxi = Math.max(0, ...sub.map(x => Number(x.w_fxi || x.w_gst) || 0));
+                    const humValid = sub.filter(x => x.humi !== null && x.humi !== undefined && !isNaN(x.humi));
+                    const hVal = humValid.length > 0 ? humValid[0].humi : null;
+
+                    hourly24Rows.push({
+                        h,
+                        temp: tVal,
+                        rain: rTot,
+                        snow: sTot,
+                        w_avg: wAvg,
+                        w_gst: wGst,
+                        w_fxi: wFxi,
+                        humi: hVal
+                    });
+                } else {
+                    hourly24Rows.push({
+                        h,
+                        temp: null,
+                        rain: 0,
+                        snow: 0,
+                        w_avg: 0,
+                        w_gst: 0,
+                        w_fxi: 0,
+                        humi: null
+                    });
+                }
+            }
+
+            hourly24Rows.forEach(r => {
+                const hourFormatted = `${String(r.h).padStart(2, '0')}h00`;
                 part2 += `<tr class="btp-stripe"><td style="font-weight:bold; color:#003366; font-size:0.9rem;">${hourFormatted}</td>`;
                 if (annexCols.temp) part2 += `<td>${r.temp !== null ? parseFloat(r.temp).toFixed(1) : '--'}</td>`;
                 if (annexCols.rain) part2 += `<td>${parseFloat(r.rain || 0).toFixed(1)}</td>`;
@@ -1480,7 +1519,7 @@ Voici les données brutes :`;
                 if (annexCols.windAvgPdf) part2 += `<td>${Math.round(r.w_avg || 0)}</td>`;
                 if (annexCols.windG) part2 += `<td>${Math.round(r.w_gst || 0)}</td>`;
                 if (annexCols.windFxi) part2 += `<td>${Math.round(r.w_fxi || r.w_gst || 0)}</td>`;
-                if (annexCols.humi) part2 += `<td>${Math.round(r.humi || 0)}%</td>`;
+                if (annexCols.humi) part2 += `<td>${r.humi !== null ? Math.round(r.humi) + '%' : '--'}</td>`;
                 part2 += `</tr>`;
             });
             part2 += `</tbody></table>`;
