@@ -712,13 +712,14 @@ Voici les données brutes :`;
                             cambraiDaily.forEach(w => {
                                 const [y, m, day] = w.date.split('-');
                                 const dk = `${day}/${m}/${y}`;
-                                if (dailyOfficialMap[dk]) {
-                                    dailyOfficialMap[dk].fxi3s = w.fxi3s;
-                                    dailyOfficialMap[dk].fxi = w.fxi;
-                                    dailyOfficialMap[dk].hxi = w.hxi;
-                                    dailyOfficialMap[dk].dxi = w.dxi;
-                                    dailyOfficialMap[dk].windStation = 'CAMBRAI-EPINOY (62298001)';
+                                if (!dailyOfficialMap[dk]) {
+                                    dailyOfficialMap[dk] = { date: w.date };
                                 }
+                                dailyOfficialMap[dk].fxi3s = w.fxi3s;
+                                dailyOfficialMap[dk].fxi = w.fxi;
+                                dailyOfficialMap[dk].hxi = w.hxi;
+                                dailyOfficialMap[dk].dxi = w.dxi;
+                                dailyOfficialMap[dk].windStation = 'CAMBRAI-EPINOY (62298001)';
                             });
                         }
                     } catch (eW) {
@@ -733,21 +734,27 @@ Voici les données brutes :`;
             setStatus('⏳ Récupération des relevés 6 minutes Météociel RADOME...');
             let history = await weatherAPI.getStation6mnHistoryRange(selectedStationId, startDate, endDate, (msg) => setStatus('⏳ ' + msg));
 
-            // Si Douai (59178001), récupérer les vents 6mn de Cambrai-Épinoy (62298001) et les synchroniser
+            // Si Douai (59178001) ou station sans capteur de vent, récupérer les vents 6mn de Cambrai-Épinoy (62298001) et les synchroniser
             if (selectedStationId === '59178001' && history && history.length > 0) {
                 try {
                     const cambrai6mn = await weatherAPI.getStation6mnHistoryRange('62298001', startDate, endDate);
                     if (cambrai6mn && cambrai6mn.length > 0) {
                         const cambraiMap = new Map();
+                        const cambraiHourlyMap = new Map();
                         cambrai6mn.forEach(w => {
                             const dt = w.time instanceof Date ? w.time : new Date(w.time);
                             const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
+                            const kH = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}`;
                             cambraiMap.set(k, w);
+                            if (!cambraiHourlyMap.has(kH) || (w.gust || 0) > (cambraiHourlyMap.get(kH)?.gust || 0)) {
+                                cambraiHourlyMap.set(kH, w);
+                            }
                         });
                         history.forEach(h => {
                             const dt = h.time instanceof Date ? h.time : new Date(h.time);
                             const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
-                            const cMatch = cambraiMap.get(k);
+                            const kH = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}`;
+                            const cMatch = cambraiMap.get(k) || cambraiHourlyMap.get(kH);
                             if (cMatch) {
                                 h.wind = cMatch.wind;
                                 h.gust = cMatch.gust;
@@ -1254,10 +1261,9 @@ Voici les données brutes :`;
                 const rows = dataObj?.rows || [];
                 const ts = rows.map(d => d.temp).filter(v => v !== null);
                 const rs = rows.reduce((a, b) => a + (b.rain || 0), 0);
-                const maxG = rows.length > 0 ? Math.max(...rows.map(d => d.w_gst || 0)) : 0;
-                const maxFxi = rows.length > 0 ? Math.max(...rows.map(d => d.w_fxi || d.w_gst || 0)) : 0;
-                // FXI 3S dans le tableau récap synoptique : DPClim en priorité
-                const syncFxi3s = dataObj.officialFxi3s != null ? Math.round(dataObj.officialFxi3s) : Math.round(maxG);
+                // FXI 3S et FXI officiel dans le tableau récap synoptique : DPClim strictement en priorité
+                const syncFxi3s = dataObj.officialFxi3s != null ? Math.round(dataObj.officialFxi3s) : (rows.length > 0 ? Math.round(Math.max(...rows.map(d => d.w_gst || 0))) : 0);
+                const syncFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : (rows.length > 0 ? Math.round(Math.max(...rows.map(d => d.w_fxi || d.w_gst || 0))) : 0);
                 totalRainPeriod += rs;
                 let dayIsKo = false;
                 rules.forEach(r => {
@@ -1266,7 +1272,7 @@ Voici les données brutes :`;
                 });
                 if (dayIsKo) daysKO.add(date);
 
-                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${syncFxi3s} km/h</td><td style="padding:4px;">${Math.round(maxFxi)} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
+                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${syncFxi3s} km/h</td><td style="padding:4px;">${syncFxi} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
             });
             syncHtml += `</tbody></table>
             <div class="btp-result-box">
@@ -1437,8 +1443,11 @@ Voici les données brutes :`;
                 sumR += `<td>${fxi3sVal !== null ? `${fxi3sVal} km/h` : '--'}${subBadge(fxi3sTime)}</td>`; 
             }
             if (annexCols.windFxi) { 
+                const dpFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : null;
+                const fxiVal = dpFxi !== null ? dpFxi : (fxiAll.length ? Math.round(Math.max(...fxiAll)) : 0);
+                const fxiTime = dpFxi !== null ? (dataObj.officialHxi || '') : hFxi;
                 sumH += `<th style="${thStyle}">FXI Max</th>`; 
-                sumR += `<td>${fxiAll.length ? Math.round(Math.max(...fxiAll)) : 0} km/h${subBadge(hFxi)}</td>`; 
+                sumR += `<td>${fxiVal} km/h${subBadge(fxiTime)}</td>`; 
             }
             if (annexCols.humi) { 
                 sumH += `<th style="${thStyle}">Hum. Max</th>`; 

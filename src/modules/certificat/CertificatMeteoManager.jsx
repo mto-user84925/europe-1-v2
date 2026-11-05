@@ -999,12 +999,13 @@ const CertificatMeteoManager = () => {
                         const cambraiDaily = await meteoFranceClimService.fetchStationHistory('62298001', startDate, finalEndDate);
                         if (cambraiDaily && cambraiDaily.length > 0) {
                             cambraiDaily.forEach(w => {
-                                if (dailyOfficialMap[w.date]) {
-                                    dailyOfficialMap[w.date].fxi3s = w.fxi3s;
-                                    dailyOfficialMap[w.date].fxi = w.fxi;
-                                    dailyOfficialMap[w.date].hxi = w.hxi;
-                                    dailyOfficialMap[w.date].dxi = w.dxi;
+                                if (!dailyOfficialMap[w.date]) {
+                                    dailyOfficialMap[w.date] = { date: w.date };
                                 }
+                                dailyOfficialMap[w.date].fxi3s = w.fxi3s;
+                                dailyOfficialMap[w.date].fxi = w.fxi;
+                                dailyOfficialMap[w.date].hxi = w.hxi;
+                                dailyOfficialMap[w.date].dxi = w.dxi;
                             });
                         }
                     } catch (eC) {
@@ -1043,15 +1044,21 @@ const CertificatMeteoManager = () => {
                     const cambrai6mn = await weatherAPI.getStation6mnHistoryRange('62298001', startDate, finalEndDate);
                     if (cambrai6mn && cambrai6mn.length > 0) {
                         const cambraiMap = new Map();
+                        const cambraiHourlyMap = new Map();
                         cambrai6mn.forEach(w => {
                             const dt = w.time instanceof Date ? w.time : new Date(w.time);
                             const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
+                            const kH = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}`;
                             cambraiMap.set(k, w);
+                            if (!cambraiHourlyMap.has(kH) || (w.gust || 0) > (cambraiHourlyMap.get(kH)?.gust || 0)) {
+                                cambraiHourlyMap.set(kH, w);
+                            }
                         });
                         history.forEach(h => {
                             const dt = h.time instanceof Date ? h.time : new Date(h.time);
                             const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
-                            const cMatch = cambraiMap.get(k);
+                            const kH = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}`;
+                            const cMatch = cambraiMap.get(k) || cambraiHourlyMap.get(kH);
                             if (cMatch) {
                                 h.wind = cMatch.wind;
                                 h.gust = cMatch.gust;

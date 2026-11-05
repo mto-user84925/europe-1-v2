@@ -186,12 +186,29 @@ export const parseStationObservations = (html) => {
             }
         }
 
-        // Précipitations (dernière cellule)
+        // Précipitations (recherche ciblée sur les dernières cellules pour trouver les mm réels ou "aucune")
         let rain = 0;
-        const lastCellText = cells[cells.length - 1].replace(/<[^>]*>/g, '').trim().toLowerCase();
-        if (!lastCellText.includes('aucune')) {
-            const rVal = getCellVal(cells.length - 1);
-            if (rVal !== null) rain = rVal;
+        for (let c = cells.length - 1; c >= Math.max(0, cells.length - 3); c--) {
+            const rawCell = cells[c] || '';
+            const cleanCell = rawCell
+                .replace(/onmouseover\s*=\s*["'][^"']*["']/gi, '')
+                .replace(/onmouseout\s*=\s*["'][^"']*["']/gi, '')
+                .replace(/<style[\s\S]*?<\/style>/gi, '')
+                .replace(/<[^>]*>/g, ' ')
+                .trim();
+
+            if (/aucune/i.test(cleanCell)) {
+                rain = 0;
+                break;
+            }
+            const mRain = cleanCell.match(/(\d+(?:[.,]\d+)?)\s*mm/i);
+            if (mRain) {
+                const parsed = parseFloat(mRain[1].replace(',', '.'));
+                if (!isNaN(parsed) && parsed >= 0 && parsed < 200) {
+                    rain = parsed;
+                    break;
+                }
+            }
         }
 
         // Pression (cellule 9 en priorité ou recherche hPa)
