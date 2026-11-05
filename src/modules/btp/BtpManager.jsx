@@ -1480,7 +1480,8 @@ Voici les données brutes :`;
             if (annexCols.windFxi) { 
                 const dpFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : null;
                 const fxiVal = dpFxi !== null ? dpFxi : (fxiAll.length ? Math.round(Math.max(...fxiAll)) : 0);
-                const fxiTime = dpFxi !== null ? (dataObj.officialHxi || '') : hFxi;
+                // ponytail: horaire de Météociel en priorité pour FXI Max, et horaire DPClim pour FXI 3s Max
+                const fxiTime = hFxi || (dpFxi !== null ? (dataObj.officialHxi || '') : '');
                 sumH += `<th style="${thStyle}">FXI Max</th>`; 
                 sumR += `<td>${fxiVal} km/h${subBadge(fxiTime)}</td>`; 
             }

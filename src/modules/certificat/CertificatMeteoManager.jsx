@@ -1193,7 +1193,7 @@ const CertificatMeteoManager = () => {
                 }
                 if (singleOfficial.fxi !== null && singleOfficial.fxi > 0) {
                     stats.windFxiMax = Math.round(singleOfficial.fxi);
-                    stats.windFxiMaxTime = singleOfficial.hxi || stats.windFxiMaxTime;
+                    stats.windFxiMaxTime = stats.windFxiMaxTime || singleOfficial.hxi;
                 }
                 if (singleOfficial.tx !== null) {
                     stats.tempMax = singleOfficial.tx;
@@ -1218,7 +1218,7 @@ const CertificatMeteoManager = () => {
                 if (validFxi.length > 0) {
                     const maxF = validFxi.reduce((m, d) => d.fxi > m.fxi ? d : m, validFxi[0]);
                     stats.windFxiMax = Math.round(maxF.fxi);
-                    stats.windFxiMaxTime = maxF.hxi || stats.windFxiMaxTime;
+                    stats.windFxiMaxTime = stats.windFxiMaxTime || maxF.hxi;
                     stats.windFxiMaxDate = maxF.date;
                 }
             }
