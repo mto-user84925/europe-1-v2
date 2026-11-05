@@ -226,7 +226,36 @@ export const parseStationObservations = (html) => {
     };
 };
 
+// Cache mémoire et en-têtes camouflés anti-détection
+const _mcMemoryCache = new Map();
+const BROWSER_CAMOUFLAGE_HEADERS = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Referer': 'https://www.meteociel.fr/'
+};
+
 export const fetchStationObservations = async (stationId, date, isIntra = false) => {
+    const cacheKey = `mc_${stationId}_${date}_${isIntra ? '6m' : '1h'}`;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isPast = date < todayStr;
+
+    // 1. Vérification du cache mémoire (0 ms)
+    if (_mcMemoryCache.has(cacheKey)) {
+        return _mcMemoryCache.get(cacheKey);
+    }
+
+    // 2. Vérification du cache localStorage (évite 100% des requêtes répétées)
+    if (typeof window !== 'undefined' && window.localStorage && isPast) {
+        try {
+            const localCached = window.localStorage.getItem(cacheKey);
+            if (localCached) {
+                const parsed = JSON.parse(localCached);
+                _mcMemoryCache.set(cacheKey, parsed);
+                return parsed;
+            }
+        } catch (e) { }
+    }
+
     try {
         const d = new Date(date);
         const day = d.getDate();
@@ -235,19 +264,40 @@ export const fetchStationObservations = async (stationId, date, isIntra = false)
 
         const url = `${API_METEOCIEL}/temps-reel/obs_villes.php?code2=${stationId}&jour2=${day}&mois2=${month}&annee2=${year}${isIntra ? '&affint=1' : ''}`;
 
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
-
-        const buffer = await response.arrayBuffer();
-        const html = new TextDecoder('windows-1252').decode(buffer);
+        let html = '';
+        try {
+            const response = await fetch(url, { headers: BROWSER_CAMOUFLAGE_HEADERS });
+            if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
+            const buffer = await response.arrayBuffer();
+            html = new TextDecoder('windows-1252').decode(buffer);
+        } catch (fetchErr) {
+            // Repli secours si proxy principal indisponible : proxy CORS chiffré
+            const fullTarget = `https://www.meteociel.fr/temps-reel/obs_villes.php?code2=${stationId}&jour2=${day}&mois2=${month}&annee2=${year}${isIntra ? '&affint=1' : ''}`;
+            const backupUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(fullTarget)}`;
+            const backupResp = await fetch(backupUrl, { headers: BROWSER_CAMOUFLAGE_HEADERS });
+            if (!backupResp.ok) throw fetchErr;
+            const buffer = await backupResp.arrayBuffer();
+            html = new TextDecoder('windows-1252').decode(buffer);
+        }
 
         const parsedData = parseStationObservations(html);
-
-        return {
+        const result = {
             date: date,
             stationId,
             ...parsedData
         };
+
+        // Sauvegarde dans le cache mémoire et localStorage si c'est une archive passée
+        if (result.observations && result.observations.length > 0) {
+            _mcMemoryCache.set(cacheKey, result);
+            if (typeof window !== 'undefined' && window.localStorage && isPast) {
+                try {
+                    window.localStorage.setItem(cacheKey, JSON.stringify(result));
+                } catch (e) { }
+            }
+        }
+
+        return result;
     } catch (error) {
         console.error(`[MeteocielService] Error fetching observations for ${stationId}:`, error);
         return null;

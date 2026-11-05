@@ -37,7 +37,7 @@
     },
     {
       "source": "/api-meteociel/(.*)",
-      "destination": "https://www.meteociel.fr/$1"
+      "destination": "/api/meteociel-proxy?path=$1"
     },
     {
       "source": "/api-meteo/(.*)",

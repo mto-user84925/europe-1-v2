@@ -717,7 +717,12 @@ const AttestationIntemperieManager = () => {
     const handleFetchData = async () => {
         const stTemp = (showDetailedStations && selectedStationIdTemp) ? selectedStationIdTemp : selectedStationId;
         const stRain = (showDetailedStations && selectedStationIdRain) ? selectedStationIdRain : selectedStationId;
-        const stWind = (showDetailedStations && selectedStationIdWind) ? selectedStationIdWind : selectedStationId;
+        // Règle d'or : DOUAI (59178001) n'a pas d'anémomètre -> Reclassement automatique vers CAMBRAI-EPINOY (62298001)
+        let stWind = (showDetailedStations && selectedStationIdWind) ? selectedStationIdWind : selectedStationId;
+        if (selectedStationId === '59178001' && (!showDetailedStations || stWind === '59178001' || !selectedStationIdWind)) {
+            stWind = '62298001';
+            setStationMeteoWind('CAMBRAI-EPINOY');
+        }
 
         const uniqueStationIds = Array.from(new Set([stTemp, stRain, stWind].filter(Boolean)));
         if (uniqueStationIds.length === 0 || !startDate) {
@@ -736,7 +741,59 @@ const AttestationIntemperieManager = () => {
             const fetchHistoryForStation = async (stationId) => {
                 let hist = [];
                 const sName = stationNames[stationId] || stationId;
-                hist = await weatherAPI.getStationHourlyHistoryRange(stationId, startDate, finalEndDate, (msg) => setStatus(`⏳ [${sName}] ${msg}`));
+
+                // Priorité 1 : Relevés 6 minutes Météociel RADOME (240 mesures/jour)
+                try {
+                    const data6mn = await weatherAPI.getStation6mnHistoryRange(stationId, startDate, finalEndDate, (msg) => setStatus(`⏳ [${sName}] ${msg}`));
+                    if (data6mn && data6mn.length > 0) {
+                        hist = data6mn.map(d => ({
+                            time: d.time instanceof Date ? d.time : new Date(d.time),
+                            date: d.date || (d.time instanceof Date ? d.time.toLocaleDateString('fr-CA') : ''),
+                            date_local: d.date_local || d.date,
+                            temp: d.temp,
+                            rain: d.rain || 0,
+                            wind: d.wind || 0,
+                            gust: d.gust || d.fxi || 0,
+                            fxi3s: d.fxi3s || d.gust || 0,
+                            fxi: d.fxi || d.gust || 0,
+                            hum: d.hum,
+                            pres: d.pressure || d.pres,
+                            h: d.time instanceof Date ? d.time.getHours() : (d.h || 0),
+                            h_local: d.time instanceof Date ? d.time.getHours() : (d.h || 0),
+                            minute: d.time instanceof Date ? d.time.getMinutes() : (d.minute || 0)
+                        }));
+                    }
+                } catch (e6) {
+                    console.warn(`[Attestation] 6mn fallback pour ${stationId}:`, e6);
+                }
+
+                // Secours 1 : DPClim horaire Météo-France
+                if (!hist || hist.length === 0) {
+                    hist = await weatherAPI.getStationHourlyHistoryRange(stationId, startDate, finalEndDate, (msg) => setStatus(`⏳ [${sName}] ${msg}`));
+                }
+
+                // Secours 2 : Reconstruction à partir de l'archive quotidienne DPClim (infaillible pour dates passées)
+                if ((!hist || hist.length === 0) && stationDailyOfficials[stationId]) {
+                    const dailyMap = stationDailyOfficials[stationId];
+                    hist = Object.values(dailyMap).map(d => ({
+                        date: d.date,
+                        date_local: d.date,
+                        time: new Date(d.date + 'T12:00:00'),
+                        h: 12,
+                        h_local: 12,
+                        minute: 0,
+                        temp: d.tx !== null ? d.tx : d.tn,
+                        rain: d.rr || 0,
+                        wind: d.fxi3s || d.fxi || 0,
+                        gust: d.fxi3s || d.fxi || 0,
+                        fxi3s: d.fxi3s,
+                        fxi: d.fxi,
+                        htn_time: d.htn,
+                        htx_time: d.htx,
+                        hfxi3s_time: d.hxi,
+                        hfxi_time: d.hxi
+                    }));
+                }
 
                 // Repli 6mn si aujourd'hui et DPClim vide
                 if ((!hist || hist.length === 0) && isSingleDayToday) {
@@ -765,13 +822,29 @@ const AttestationIntemperieManager = () => {
             };
 
             const stationHistories = {};
+            const stationDailyOfficials = {};
+
             for (const stId of uniqueStationIds) {
                 const sName = stationNames[stId] || stId;
-                setStatus(`⏳ Récupération DPClim (${sName})...`);
+                setStatus(`⏳ Récupération DPClim officiel (${sName})...`);
+                
+                // 1. Charger les valeurs certifiées officielles DPClim (FXI 3s OMM, FXI Brut, Tx, Tn, RR)
+                try {
+                    const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
+                    const daily = await meteoFranceClimService.fetchStationHistory(stId, startDate, finalEndDate);
+                    if (daily && daily.length > 0) {
+                        stationDailyOfficials[stId] = {};
+                        daily.forEach(d => { stationDailyOfficials[stId][d.date] = d; });
+                    }
+                } catch (eDaily) {
+                    console.warn(`[Attestation] Échec DPClim quotidien ${stId}:`, eDaily);
+                }
+
+                // 2. Charger les observations horaires / 6-minutes
                 stationHistories[stId] = await fetchHistoryForStation(stId);
             }
 
-            const indexHistoryByDay = (hist) => {
+            const indexHistoryByDay = (hist, targetStId = null) => {
                 const dayMap = {};
                 hist.forEach(obs => {
                     const dt = obs.time instanceof Date ? obs.time : new Date(obs.time);
@@ -1955,7 +2028,16 @@ const AttestationIntemperieManager = () => {
                                     const name = stationNames[val] || val;
                                     const clean = cleanStationName(name);
                                     setStationMeteo(clean);
-                                    if (!showDetailedStations) {
+                                    if (val === '59178001') {
+                                        // Douai ne mesurant pas le vent, basculer automatiquement le vent sur Cambrai-Épinoy (62298001)
+                                        setSelectedStationIdTemp('59178001');
+                                        setSelectedStationIdRain('59178001');
+                                        setStationMeteoTemp('DOUAI');
+                                        setStationMeteoRain('DOUAI');
+                                        setSelectedStationIdWind('62298001');
+                                        setStationMeteoWind('CAMBRAI-EPINOY');
+                                        setDeptWind('62');
+                                    } else if (!showDetailedStations) {
                                         setSelectedStationIdTemp(val);
                                         setSelectedStationIdRain(val);
                                         setSelectedStationIdWind(val);
@@ -2020,6 +2102,55 @@ const AttestationIntemperieManager = () => {
                             ) : (
                                 <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '12px', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
                                     
+                                    {/* Encadré d'aide et recommandation Douai (59) / Cambrai (62) */}
+                                    {((selectedDept === '59' || deptTemp === '59' || deptWind === '62') || (selectedStationId === '59178001')) && (
+                                        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px 12px', fontSize: '0.78rem', color: '#1e3a8a', lineHeight: 1.4 }}>
+                                            <div style={{ fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                💡 Configuration recommandée pour Douai (59) :
+                                            </div>
+                                            <div style={{ fontSize: '0.76rem', color: '#334155', marginBottom: '6px' }}>
+                                                • <strong>Température & Pluie :</strong> DOUAI (Station 59178001 - sur site)<br/>
+                                                • <strong>Vent avec anémomètre :</strong> <strong>CAMBRAI-EPINOY (Station 62298001 - 19.5 km)</strong> (Douai non équipé en anémomètre)
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        setSelectedStationIdTemp('59178001');
+                                                        setSelectedStationIdRain('59178001');
+                                                        setStationMeteoTemp('DOUAI');
+                                                        setStationMeteoRain('DOUAI');
+                                                        setSelectedStationIdWind('62298001');
+                                                        setStationMeteoWind('CAMBRAI-EPINOY');
+                                                        setDeptTemp('59');
+                                                        setDeptRain('59');
+                                                        setDeptWind('62');
+                                                    }}
+                                                    style={{ background: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '4px', padding: '5px 10px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' }}
+                                                >
+                                                    ⚡ 1. Vent : Cambrai-Épinoy (19.5 km - anémomètre officiel Météo-France)
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        setSelectedStationIdTemp('59178001');
+                                                        setSelectedStationIdRain('59178001');
+                                                        setStationMeteoTemp('DOUAI');
+                                                        setStationMeteoRain('DOUAI');
+                                                        setSelectedStationIdWind('59343001');
+                                                        setStationMeteoWind('LILLE-LESQUIN');
+                                                        setDeptTemp('59');
+                                                        setDeptRain('59');
+                                                        setDeptWind('59');
+                                                    }}
+                                                    style={{ background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '4px', padding: '5px 10px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' }}
+                                                >
+                                                    ⚡ 2. Vent : Lille-Lesquin (20.2 km - Station Synoptique)
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Encadré d'aide et recommandation Chantonnay / Vendée */}
                                     {((selectedDept === '85' || deptTemp === '85' || deptWind === '85') || (selectedStationId === '85051001')) && (
                                         <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px 12px', fontSize: '0.78rem', color: '#1e3a8a', lineHeight: 1.4 }}>

@@ -985,41 +985,112 @@ const CertificatMeteoManager = () => {
             const todayStr = new Date().toISOString().split('T')[0];
             const isSingleDayToday = startDate === todayStr && finalEndDate === todayStr;
 
-            let history = [];
-
-            // 1. Appel direct DPClim officiel Météo-France (0h à 23h)
-            history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, startDate, finalEndDate, (msg) => setStatus('⏳ ' + msg));
-
-            // Si vide et qu'on demande aujourd'hui, repli vers les données 6mn
-            if ((!history || history.length === 0) && isSingleDayToday) {
-                const dayData6mn = await weatherAPI.getStation6mnHistory(selectedStationId, new Date(startDate));
-                if (dayData6mn && dayData6mn.length > 0) {
-                    history = [];
-                    for (let h = 0; h < 24; h++) {
-                        const hourlySegment = dayData6mn.filter(d => d.time.getHours() === h);
-                        if (hourlySegment.length > 0) {
-                            const lastMeas = hourlySegment.find(d => d.time.getMinutes() === 0) || hourlySegment[hourlySegment.length - 1];
-                            const hourlyRain = hourlySegment.reduce((sum, d) => sum + (d.rain || 0), 0);
-                            const hourlyGust = Math.max(...hourlySegment.map(d => d.gust || 0));
-                            const hourlyWindMax = Math.max(...hourlySegment.map(d => d.wind || 0));
-                            const hourlyTempMax = Math.max(...hourlySegment.map(d => d.temp !== null ? d.temp : -999));
-                            const finalTemp = hourlyTempMax > -900 ? hourlyTempMax : lastMeas.temp;
-
-                            history.push({
-                                time: lastMeas.time,
-                                temp: finalTemp,
-                                rain: hourlyRain,
-                                wind: hourlyWindMax,
-                                gust: hourlyGust > 0 ? hourlyGust : lastMeas.gust,
-                                fxi3s: hourlyGust > 0 ? hourlyGust : lastMeas.gust,
-                                fxi: lastMeas.gust || 0,
-                                hum: lastMeas.hum,
-                                vv: lastMeas.vv,
-                                pres: lastMeas.pressure
+            // 1. Récupération préalable des indicateurs officiels Météo-France DPClim (FXI 3s OMM, FXI Brut, Tx, Tn, RR)
+            let dailyOfficialMap = {};
+            try {
+                const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
+                const dailyRows = await meteoFranceClimService.fetchStationHistory(selectedStationId, startDate, finalEndDate);
+                if (dailyRows && dailyRows.length > 0) {
+                    dailyRows.forEach(d => { dailyOfficialMap[d.date] = d; });
+                }
+                // Si DOUAI (59178001), enrichir avec CAMBRAI-EPINOY (62298001) pour le vent
+                if (selectedStationId === '59178001') {
+                    try {
+                        const cambraiDaily = await meteoFranceClimService.fetchStationHistory('62298001', startDate, finalEndDate);
+                        if (cambraiDaily && cambraiDaily.length > 0) {
+                            cambraiDaily.forEach(w => {
+                                if (dailyOfficialMap[w.date]) {
+                                    dailyOfficialMap[w.date].fxi3s = w.fxi3s;
+                                    dailyOfficialMap[w.date].fxi = w.fxi;
+                                    dailyOfficialMap[w.date].hxi = w.hxi;
+                                    dailyOfficialMap[w.date].dxi = w.dxi;
+                                }
                             });
                         }
+                    } catch (eC) {
+                        console.warn("[Certificat] Échec DPClim Cambrai:", eC);
                     }
                 }
+            } catch (eDaily) {
+                console.warn("[Certificat] DPClim quotidien info:", eDaily);
+            }
+
+            // 2. Récupération des observations fines au pas de 6 minutes (Météociel RADOME - 240 mesures/jour)
+            setStatus('⏳ Récupération des relevés 6 minutes Météociel RADOME...');
+            let history = [];
+            const data6mn = await weatherAPI.getStation6mnHistoryRange(selectedStationId, startDate, finalEndDate, (msg) => setStatus('⏳ ' + msg));
+            if (data6mn && data6mn.length > 0) {
+                history = data6mn.map(d => ({
+                    time: d.time instanceof Date ? d.time : new Date(d.time),
+                    date: d.date || (d.time instanceof Date ? d.time.toLocaleDateString('fr-CA') : ''),
+                    date_local: d.date_local || d.date,
+                    temp: d.temp,
+                    rain: d.rain || 0,
+                    wind: d.wind || 0,
+                    gust: d.gust || d.fxi || 0,
+                    fxi3s: d.fxi3s || d.gust || 0,
+                    fxi: d.fxi || d.gust || 0,
+                    hum: d.hum,
+                    pres: d.pressure || d.pres,
+                    h: d.time instanceof Date ? d.time.getHours() : (d.h || 0),
+                    h_local: d.time instanceof Date ? d.time.getHours() : (d.h || 0)
+                }));
+            }
+
+            // Si Douai (59178001), récupérer les vents 6mn de Cambrai-Épinoy (62298001) et les synchroniser
+            if (selectedStationId === '59178001' && history && history.length > 0) {
+                try {
+                    const cambrai6mn = await weatherAPI.getStation6mnHistoryRange('62298001', startDate, finalEndDate);
+                    if (cambrai6mn && cambrai6mn.length > 0) {
+                        const cambraiMap = new Map();
+                        cambrai6mn.forEach(w => {
+                            const dt = w.time instanceof Date ? w.time : new Date(w.time);
+                            const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
+                            cambraiMap.set(k, w);
+                        });
+                        history.forEach(h => {
+                            const dt = h.time instanceof Date ? h.time : new Date(h.time);
+                            const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
+                            const cMatch = cambraiMap.get(k);
+                            if (cMatch) {
+                                h.wind = cMatch.wind;
+                                h.gust = cMatch.gust;
+                                h.fxi3s = cMatch.fxi3s || cMatch.gust;
+                                h.fxi = cMatch.fxi || cMatch.gust;
+                                h.hfxi3s_time = cMatch.hfxi3s_time;
+                            }
+                        });
+                    }
+                } catch (eC6) {
+                    console.warn("[Certificat] Échec synchronisation 6mn vent Cambrai:", eC6);
+                }
+            }
+
+            // Secours 1 : si pas de relevé 6 minutes, repli sur l'archive DPClim horaire
+            if (!history || history.length === 0) {
+                setStatus('⏳ Repli sur Météo-France DPClim horaire...');
+                history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, startDate, finalEndDate, (msg) => setStatus('⏳ ' + msg));
+            }
+
+            // Secours 2 : Reconstruction à partir de l'archive quotidienne DPClim (infaillible pour dates passées)
+            if ((!history || history.length === 0) && Object.keys(dailyOfficialMap).length > 0) {
+                history = Object.values(dailyOfficialMap).map(d => ({
+                    date: d.date,
+                    date_local: d.date,
+                    time: new Date(d.date + 'T12:00:00'),
+                    h: 12,
+                    h_local: 12,
+                    temp: d.tx !== null ? d.tx : d.tn,
+                    rain: d.rr || 0,
+                    wind: d.fxi3s || d.fxi || 0,
+                    gust: d.fxi3s || d.fxi || 0,
+                    fxi3s: d.fxi3s,
+                    fxi: d.fxi,
+                    htn_time: d.htn,
+                    htx_time: d.htx,
+                    hfxi3s_time: d.hxi,
+                    hfxi_time: d.hxi
+                }));
             }
 
             if (!history || history.length === 0) {
@@ -1103,6 +1174,45 @@ const CertificatMeteoManager = () => {
                 rainMaxDate: rainMaxRow.date || (rainMaxRow.time instanceof Date ? rainMaxRow.time.toLocaleDateString('sv-SE') : null),
                 humMax: Math.max(...rows.map(r => Number(r.humi) || 0)),
             };
+
+            // Intégration stricte des paramètres certifiés DPClim Météo-France (FXI 3s OMM et FXI Brut)
+            const singleOfficial = dailyOfficialMap[startDate];
+            if (singleOfficial && !isPeriod) {
+                if (singleOfficial.fxi3s !== null && singleOfficial.fxi3s > 0) {
+                    stats.windGustMax = Math.round(singleOfficial.fxi3s);
+                    stats.windGustMaxTime = singleOfficial.hxi || stats.windGustMaxTime;
+                }
+                if (singleOfficial.fxi !== null && singleOfficial.fxi > 0) {
+                    stats.windFxiMax = Math.round(singleOfficial.fxi);
+                    stats.windFxiMaxTime = singleOfficial.hxi || stats.windFxiMaxTime;
+                }
+                if (singleOfficial.tx !== null) {
+                    stats.tempMax = singleOfficial.tx;
+                    stats.tempMaxTime = singleOfficial.htx || stats.tempMaxTime;
+                }
+                if (singleOfficial.tn !== null) {
+                    stats.tempMin = singleOfficial.tn;
+                    stats.tempMinTime = singleOfficial.htn || stats.tempMinTime;
+                }
+                if (singleOfficial.rr !== null) {
+                    stats.rainTotal = singleOfficial.rr;
+                }
+            } else if (Object.keys(dailyOfficialMap).length > 0 && isPeriod) {
+                const validFxi3s = Object.values(dailyOfficialMap).filter(d => d.fxi3s !== null && d.fxi3s > 0);
+                if (validFxi3s.length > 0) {
+                    const maxD = validFxi3s.reduce((m, d) => d.fxi3s > m.fxi3s ? d : m, validFxi3s[0]);
+                    stats.windGustMax = Math.round(maxD.fxi3s);
+                    stats.windGustMaxTime = maxD.hxi || stats.windGustMaxTime;
+                    stats.windGustMaxDate = maxD.date;
+                }
+                const validFxi = Object.values(dailyOfficialMap).filter(d => d.fxi !== null && d.fxi > 0);
+                if (validFxi.length > 0) {
+                    const maxF = validFxi.reduce((m, d) => d.fxi > m.fxi ? d : m, validFxi[0]);
+                    stats.windFxiMax = Math.round(maxF.fxi);
+                    stats.windFxiMaxTime = maxF.hxi || stats.windFxiMaxTime;
+                    stats.windFxiMaxDate = maxF.date;
+                }
+            }
 
             setGlobalData({
                 date: startDate,
