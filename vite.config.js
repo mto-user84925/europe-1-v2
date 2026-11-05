@@ -109,7 +109,7 @@ export default defineConfig({
         secure: false,
       },
       '/api-meteociel': {
-        target: 'https://www.meteociel.fr',
+        target: 'https://visionary-chebakia-465960.netlify.app/api-meteociel',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api-meteociel/, ''),
         secure: false,

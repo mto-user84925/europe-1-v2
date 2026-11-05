@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Service pour récupérer et parser les données d'archives de Meteociel
  */
 
@@ -271,13 +271,22 @@ export const fetchStationObservations = async (stationId, date, isIntra = false)
             const buffer = await response.arrayBuffer();
             html = new TextDecoder('windows-1252').decode(buffer);
         } catch (fetchErr) {
-            // Repli secours si proxy principal indisponible : proxy CORS chiffré
-            const fullTarget = `https://www.meteociel.fr/temps-reel/obs_villes.php?code2=${stationId}&jour2=${day}&mois2=${month}&annee2=${year}${isIntra ? '&affint=1' : ''}`;
-            const backupUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(fullTarget)}`;
-            const backupResp = await fetch(backupUrl, { headers: BROWSER_CAMOUFLAGE_HEADERS });
-            if (!backupResp.ok) throw fetchErr;
-            const buffer = await backupResp.arrayBuffer();
-            html = new TextDecoder('windows-1252').decode(buffer);
+            // Repli secours n°1 si proxy principal indisponible : Moteur Netlify dédié (archivebotok=1)
+            try {
+                const netlifyUrl = `https://visionary-chebakia-465960.netlify.app/api-meteociel/temps-reel/obs_villes.php?code2=${stationId}&jour2=${day}&mois2=${month}&annee2=${year}${isIntra ? '&affint=1' : ''}`;
+                const netlifyResp = await fetch(netlifyUrl, { headers: BROWSER_CAMOUFLAGE_HEADERS });
+                if (!netlifyResp.ok) throw fetchErr;
+                const buffer = await netlifyResp.arrayBuffer();
+                html = new TextDecoder('windows-1252').decode(buffer);
+            } catch (netErr) {
+                // Repli secours n°2 : proxy CORS chiffré
+                const fullTarget = `https://www.meteociel.fr/temps-reel/obs_villes.php?code2=${stationId}&jour2=${day}&mois2=${month}&annee2=${year}${isIntra ? '&affint=1' : ''}`;
+                const backupUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(fullTarget)}`;
+                const backupResp = await fetch(backupUrl, { headers: BROWSER_CAMOUFLAGE_HEADERS });
+                if (!backupResp.ok) throw fetchErr;
+                const buffer = await backupResp.arrayBuffer();
+                html = new TextDecoder('windows-1252').decode(buffer);
+            }
         }
 
         const parsedData = parseStationObservations(html);
