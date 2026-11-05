@@ -1026,7 +1026,7 @@ const CertificatMeteoManager = () => {
                     date: d.date || (d.time instanceof Date ? d.time.toLocaleDateString('fr-CA') : ''),
                     date_local: d.date_local || d.date,
                     temp: d.temp,
-                    rain: d.rain || 0,
+                    rain: (d.rain !== null && d.rain !== undefined && !isNaN(d.rain) && d.rain >= 0 && d.rain < 150) ? d.rain : 0,
                     wind: d.wind || 0,
                     gust: d.gust || d.fxi || 0,
                     fxi3s: d.fxi3s || d.gust || 0,

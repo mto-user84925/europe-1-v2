@@ -695,6 +695,7 @@ Voici les données brutes :`;
         try {
             // 1. Récupération préalable des indicateurs certifiés DPClim (FXI 3s OMM et horaire HXI)
             let dailyOfficialMap = {};
+            let dpHourlyMap = new Map();
             try {
                 const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
                 const dailyRows = await meteoFranceClimService.fetchStationHistory(selectedStationId, startDate, endDate);
@@ -704,7 +705,20 @@ Voici les données brutes :`;
                         dailyOfficialMap[`${day}/${m}/${y}`] = d;
                     });
                 }
-                // Si DOUAI (59178001), enrichir avec CAMBRAI-EPINOY (62298001) pour le vent
+
+                // DPClim horaire officiel pour alimenter les tableaux horaires 24h avec vraies rafales dissociées
+                try {
+                    const dpHourly = await meteoFranceClimService.fetchStationHourlyHistory(selectedStationId, startDate, endDate);
+                    if (dpHourly && dpHourly.length > 0) {
+                        dpHourly.forEach(dh => {
+                            dpHourlyMap.set(`${dh.date}_${dh.h}`, dh);
+                        });
+                    }
+                } catch (eH) {
+                    console.warn("[BTP] DPClim horaire info:", eH);
+                }
+
+                // Si DOUAI (59178001), enrichir avec CAMBRAI-EPINOY (62298001) pour le vent (quotidien + horaire)
                 if (selectedStationId === '59178001') {
                     try {
                         const cambraiDaily = await meteoFranceClimService.fetchStationHistory('62298001', startDate, endDate);
@@ -720,6 +734,20 @@ Voici les données brutes :`;
                                 dailyOfficialMap[dk].hxi = w.hxi;
                                 dailyOfficialMap[dk].dxi = w.dxi;
                                 dailyOfficialMap[dk].windStation = 'CAMBRAI-EPINOY (62298001)';
+                            });
+                        }
+                        const cambraiHourly = await meteoFranceClimService.fetchStationHourlyHistory('62298001', startDate, endDate);
+                        if (cambraiHourly && cambraiHourly.length > 0) {
+                            cambraiHourly.forEach(ch => {
+                                const k = `${ch.date}_${ch.h}`;
+                                const existing = dpHourlyMap.get(k) || { date: ch.date, h: ch.h };
+                                existing.fxi3s = ch.fxi3s;
+                                existing.fxi = ch.fxi;
+                                existing.wind = ch.wind;
+                                existing.hfxi3s_time = ch.hfxi3s_time;
+                                existing.hfxi_time = ch.hfxi_time;
+                                existing.windStation = 'CAMBRAI-EPINOY (62298001)';
+                                dpHourlyMap.set(k, existing);
                             });
                         }
                     } catch (eW) {
@@ -851,7 +879,7 @@ Voici les données brutes :`;
                     hfxi3s_time: obs.hfxi3s_time,
                     hfxi_time: obs.hfxi_time,
                     temp: obs.temp,
-                    rain: obs.rain || 0,
+                    rain: (obs.rain !== null && obs.rain !== undefined && !isNaN(obs.rain) && obs.rain >= 0 && obs.rain < 150) ? obs.rain : 0,
                     snow: 0,
                     w_avg: obs.wind !== null && obs.wind !== undefined ? Math.round(obs.wind) : 0,
                     w_gst: Math.round(obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s : (obs.gust || 0)),
@@ -863,6 +891,8 @@ Voici les données brutes :`;
 
             const newGlobalData = {};
             Object.entries(grouped).forEach(([date, rows]) => {
+                const parts = date.split('/');
+                const isoDate = (parts.length === 3) ? `${parts[2]}-${parts[1]}-${parts[0]}` : date;
                 // Apply auto snow logic
                 const processedRows = rows.map(r => {
                     let sn = 0;
@@ -879,6 +909,10 @@ Voici les données brutes :`;
                     officialFxi3s: off ? off.fxi3s : null,
                     officialFxi: off ? off.fxi : null,
                     officialHxi: off ? off.hxi : null,
+                    windStation: off ? off.windStation : null,
+                    dpHourly: Array.from(dpHourlyMap.entries())
+                        .filter(([k]) => k.startsWith(isoDate + '_'))
+                        .map(([, v]) => v),
                     soil: safeFloat(soilData[date] || 0),
                     forceHeat: heatData[date] || false,
                     forceFroze: frozeData[date] || false,
@@ -1260,10 +1294,11 @@ Voici les données brutes :`;
             }).forEach(([date, dataObj]) => {
                 const rows = dataObj?.rows || [];
                 const ts = rows.map(d => d.temp).filter(v => v !== null);
-                const rs = rows.reduce((a, b) => a + (b.rain || 0), 0);
-                // FXI 3S et FXI officiel dans le tableau récap synoptique : DPClim strictement en priorité
-                const syncFxi3s = dataObj.officialFxi3s != null ? Math.round(dataObj.officialFxi3s) : (rows.length > 0 ? Math.round(Math.max(...rows.map(d => d.w_gst || 0))) : 0);
-                const syncFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : (rows.length > 0 ? Math.round(Math.max(...rows.map(d => d.w_fxi || d.w_gst || 0))) : 0);
+                const rs = rows.reduce((a, b) => a + ((b.rain && b.rain >= 0 && b.rain < 150) ? b.rain : 0), 0);
+                // ponytail: FXI 3S = strictement DPClim officiel (OMM). Si DPClim non dispo, afficher '--', ne JAMAIS dupliquer FXI
+                const syncFxi3s = dataObj.officialFxi3s != null ? Math.round(dataObj.officialFxi3s) : null;
+                const maxRowFxi = rows.length > 0 ? Math.round(Math.max(...rows.map(d => d.w_fxi || d.w_gst || 0))) : null;
+                const syncFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : maxRowFxi;
                 totalRainPeriod += rs;
                 let dayIsKo = false;
                 rules.forEach(r => {
@@ -1272,7 +1307,7 @@ Voici les données brutes :`;
                 });
                 if (dayIsKo) daysKO.add(date);
 
-                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${syncFxi3s} km/h</td><td style="padding:4px;">${syncFxi} km/h</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
+                syncHtml += `<tr><td style="font-weight:700; padding:4px;">${date}</td><td style="padding:4px;">${ts.length ? Math.min(...ts).toFixed(1) + '°' : '--'} / ${ts.length ? Math.max(...ts).toFixed(1) + '°' : '--'}</td><td style="padding:4px;">${rs.toFixed(1)} mm</td><td style="padding:4px;">${syncFxi3s !== null ? `${syncFxi3s} km/h` : '--'}</td><td style="padding:4px;">${syncFxi !== null ? `${syncFxi} km/h` : '--'}</td><td style="padding:4px;">${dayIsKo ? '<span class="btp-tag btp-tag-ko" style="padding:2px 6px; font-size:0.65rem;">INTEMPÉRIE</span>' : '<span class="btp-tag btp-tag-ok" style="padding:2px 6px; font-size:0.65rem;">RAS</span>'}</td></tr>`;
             });
             syncHtml += `</tbody></table>
             <div class="btp-result-box">
@@ -1356,7 +1391,7 @@ Voici les données brutes :`;
 
             // 2. Résumé du Jour
             const tsAll = dData.map(d => d.temp).filter(v => v !== null);
-            const rsAll = dData.map(d => d.rain || 0);
+            const rsAll = dData.map(d => (d.rain && d.rain >= 0 && d.rain < 150) ? d.rain : 0);
             const ssAll = dData.map(d => d.snow || 0);
             const gsAll = dData.map(d => d.w_gst || 0);
             const fxiAll = dData.map(d => d.w_fxi || d.w_gst || 0);
@@ -1482,42 +1517,63 @@ Voici les données brutes :`;
             part2 += `</tr></thead><tbody>`;
             // Agrégation heure par heure (exactement 24 lignes de 00h00 à 23h00)
             const hourly24Rows = [];
+            const dayDpHourly = dataObj?.dpHourly || [];
+            const dpHourMap = new Map(dayDpHourly.map(h => [h.h, h]));
+
             for (let h = 0; h < 24; h++) {
                 const sub = dData.filter(r => r.h === h);
-                if (sub.length > 0) {
-                    const tempValid = sub.filter(x => x.temp !== null && x.temp !== undefined && !isNaN(x.temp));
-                    const tVal = tempValid.length > 0 ? tempValid[0].temp : null;
-                    const rTot = sub.reduce((acc, x) => acc + (Number(x.rain) || 0), 0);
-                    const sTot = sub.reduce((acc, x) => acc + (Number(x.snow) || 0), 0);
-                    const validAvg = sub.filter(x => x.w_avg !== null && x.w_avg !== undefined && !isNaN(x.w_avg));
-                    const wAvg = validAvg.length > 0 ? Math.round(validAvg.reduce((acc, x) => acc + Number(x.w_avg), 0) / validAvg.length) : 0;
-                    const wGst = Math.max(0, ...sub.map(x => Number(x.w_gst) || 0));
-                    const wFxi = Math.max(0, ...sub.map(x => Number(x.w_fxi || x.w_gst) || 0));
-                    const humValid = sub.filter(x => x.humi !== null && x.humi !== undefined && !isNaN(x.humi));
-                    const hVal = humValid.length > 0 ? humValid[0].humi : null;
+                const dpH = dpHourMap.get(h);
 
-                    hourly24Rows.push({
-                        h,
-                        temp: tVal,
-                        rain: rTot,
-                        snow: sTot,
-                        w_avg: wAvg,
-                        w_gst: wGst,
-                        w_fxi: wFxi,
-                        humi: hVal
-                    });
+                // Température
+                const tempValid = sub.filter(x => x.temp !== null && x.temp !== undefined && !isNaN(x.temp));
+                const tVal = (dpH && dpH.temp !== null && dpH.temp !== undefined) ? dpH.temp : (tempValid.length > 0 ? tempValid[0].temp : null);
+
+                // Pluie : DPClim RR1 prioritaire ou somme 6mn clampée < 150mm
+                let rTot = 0;
+                if (dpH && dpH.rain !== null && dpH.rain !== undefined && !isNaN(dpH.rain)) {
+                    rTot = Number(dpH.rain);
                 } else {
-                    hourly24Rows.push({
-                        h,
-                        temp: null,
-                        rain: 0,
-                        snow: 0,
-                        w_avg: 0,
-                        w_gst: 0,
-                        w_fxi: 0,
-                        humi: null
-                    });
+                    rTot = sub.reduce((acc, x) => acc + ((x.rain && x.rain >= 0 && x.rain < 150) ? Number(x.rain) : 0), 0);
                 }
+
+                const sTot = sub.reduce((acc, x) => acc + (Number(x.snow) || 0), 0);
+
+                // Vent moyen
+                const validAvg = sub.filter(x => x.w_avg !== null && x.w_avg !== undefined && !isNaN(x.w_avg));
+                const wAvgFromSub = validAvg.length > 0 ? Math.round(validAvg.reduce((acc, x) => acc + Number(x.w_avg), 0) / validAvg.length) : 0;
+                const wAvg = (dpH && dpH.wind !== null && dpH.wind !== undefined) ? Math.round(dpH.wind) : wAvgFromSub;
+
+                // FXI 3S (normalisé 3s OMM) : DPClim prioritaire
+                let wGst = null;
+                if (dpH && dpH.fxi3s !== null && dpH.fxi3s !== undefined) {
+                    wGst = Math.round(dpH.fxi3s);
+                } else if (sub.length > 0) {
+                    const rowGst = Math.max(0, ...sub.map(x => Number(x.w_gst) || 0));
+                    wGst = rowGst > 0 ? rowGst : null;
+                }
+
+                // FXI (rafale instantanée) : DPClim prioritaire
+                let wFxi = null;
+                if (dpH && dpH.fxi !== null && dpH.fxi !== undefined) {
+                    wFxi = Math.round(dpH.fxi);
+                } else if (sub.length > 0) {
+                    const rowFxi = Math.max(0, ...sub.map(x => Number(x.w_fxi || x.w_gst) || 0));
+                    wFxi = rowFxi > 0 ? rowFxi : null;
+                }
+
+                const humValid = sub.filter(x => x.humi !== null && x.humi !== undefined && !isNaN(x.humi));
+                const hVal = (dpH && dpH.hum !== null && dpH.hum !== undefined) ? dpH.hum : (humValid.length > 0 ? humValid[0].humi : null);
+
+                hourly24Rows.push({
+                    h,
+                    temp: tVal,
+                    rain: rTot,
+                    snow: sTot,
+                    w_avg: wAvg,
+                    w_gst: wGst,
+                    w_fxi: wFxi,
+                    humi: hVal
+                });
             }
 
             hourly24Rows.forEach(r => {
@@ -1526,9 +1582,9 @@ Voici les données brutes :`;
                 if (annexCols.temp) part2 += `<td>${r.temp !== null ? parseFloat(r.temp).toFixed(1) : '--'}</td>`;
                 if (annexCols.rain) part2 += `<td>${parseFloat(r.rain || 0).toFixed(1)}</td>`;
                 if (annexCols.snow) part2 += `<td>${parseFloat(r.snow || 0).toFixed(1)}</td>`;
-                if (annexCols.windAvgPdf) part2 += `<td>${Math.round(r.w_avg || 0)}</td>`;
-                if (annexCols.windG) part2 += `<td>${Math.round(r.w_gst || 0)}</td>`;
-                if (annexCols.windFxi) part2 += `<td>${Math.round(r.w_fxi || r.w_gst || 0)}</td>`;
+                if (annexCols.windAvgPdf) part2 += `<td>${r.w_avg !== null ? Math.round(r.w_avg) : '--'}</td>`;
+                if (annexCols.windG) part2 += `<td>${r.w_gst !== null ? Math.round(r.w_gst) : '--'}</td>`;
+                if (annexCols.windFxi) part2 += `<td>${r.w_fxi !== null ? Math.round(r.w_fxi) : '--'}</td>`;
                 if (annexCols.humi) part2 += `<td>${r.humi !== null ? Math.round(r.humi) + '%' : '--'}</td>`;
                 part2 += `</tr>`;
             });

@@ -260,7 +260,8 @@ const BROWSER_CAMOUFLAGE_HEADERS = {
 };
 
 export const fetchStationObservations = async (stationId, date, isIntra = false) => {
-    const cacheKey = `mc_${stationId}_${date}_${isIntra ? '6m' : '1h'}`;
+    // ponytail: cache v5 pour purger tout ancien artefact de pluie (>150mm) stocké dans localStorage
+    const cacheKey = `mc_v5_${stationId}_${date}_${isIntra ? '6m' : '1h'}`;
     const todayStr = new Date().toISOString().split('T')[0];
     const isPast = date < todayStr;
 
@@ -269,14 +270,19 @@ export const fetchStationObservations = async (stationId, date, isIntra = false)
         return _mcMemoryCache.get(cacheKey);
     }
 
-    // 2. Vérification du cache localStorage (évite 100% des requêtes répétées)
+    // 2. Vérification du cache localStorage avec assainissement strict anti-artefact
     if (typeof window !== 'undefined' && window.localStorage && isPast) {
         try {
             const localCached = window.localStorage.getItem(cacheKey);
             if (localCached) {
                 const parsed = JSON.parse(localCached);
-                _mcMemoryCache.set(cacheKey, parsed);
-                return parsed;
+                const isCorrupt = parsed?.observations?.some(o => (o.rain || 0) > 150);
+                if (isCorrupt) {
+                    window.localStorage.removeItem(cacheKey);
+                } else {
+                    _mcMemoryCache.set(cacheKey, parsed);
+                    return parsed;
+                }
             }
         } catch (e) { }
     }

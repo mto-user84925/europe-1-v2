@@ -105,7 +105,7 @@ export const weatherAPI = {
                                 minute: mm,
                                 temp: obs.temp,
                                 hum: obs.hum,
-                                rain: obs.rain || 0,
+                                rain: (obs.rain !== null && obs.rain !== undefined && !isNaN(obs.rain) && obs.rain >= 0 && obs.rain < 150) ? obs.rain : 0,
                                 wind: obs.wind,
                                 gust: obs.gust,
                                 fxi: obs.fxi,
