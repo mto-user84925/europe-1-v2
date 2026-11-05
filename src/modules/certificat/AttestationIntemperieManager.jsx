@@ -867,9 +867,10 @@ const AttestationIntemperieManager = () => {
                         };
                     }
                     const t = (obs.temp !== undefined && obs.temp !== null && !isNaN(obs.temp) && obs.temp > -90) ? obs.temp : null;
-                    const d = new Date(obs.time);
-                    const rowH = obs.h_local !== undefined ? obs.h_local : d.getHours();
-                    const hStr = `${String(rowH).padStart(2, '0')}h00`;
+                    const d = obs.time instanceof Date ? obs.time : (obs.time ? new Date(obs.time) : null);
+                    const rowH = obs.h_local !== undefined ? obs.h_local : (d && !isNaN(d.getTime()) ? d.getHours() : 0);
+                    const rowM = obs.minute !== undefined ? obs.minute : (d && !isNaN(d.getTime()) ? d.getMinutes() : 0);
+                    const hStr = `${String(rowH).padStart(2, '0')}h${String(rowM).padStart(2, '0')}`;
 
                     if (t !== null) {
                         if (t < dayMap[dateKey].tmin) {

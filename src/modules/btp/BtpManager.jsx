@@ -835,6 +835,7 @@ Voici les données brutes :`;
 
                 grouped[dayKey].push({
                     h: rowH,
+                    minute: obs.minute !== undefined ? obs.minute : (dt instanceof Date && !isNaN(dt.getTime()) ? dt.getMinutes() : 0),
                     h_local: obs.h_local !== undefined ? obs.h_local : rowH,
                     h_utc: obs.h_utc !== undefined ? obs.h_utc : rowH,
                     time: obs.time || dt,
@@ -863,7 +864,7 @@ Voici les données brutes :`;
                         r.rain = 0; // Move rain to snow
                     }
                     return { ...r, snow: sn };
-                }).sort((a, b) => a.h - b.h);
+                }).sort((a, b) => (new Date(a.time) - new Date(b.time)) || (a.h - b.h) || ((a.minute || 0) - (b.minute || 0)));
 
                 const off = dailyOfficialMap[date];
                 newGlobalData[date] = {
@@ -1366,6 +1367,11 @@ Voici les données brutes :`;
                         return `${hh}h${mm}`;
                     }
                 }
+                if (r.minute !== undefined && r.h !== undefined && r.minute !== null && r.h !== null) {
+                    const hh = String(r.h).padStart(2, '0');
+                    const mm = String(r.minute).padStart(2, '0');
+                    return `${hh}h${mm}`;
+                }
                 if (r.h !== undefined && r.h !== null) {
                     const s = String(r.h).replace('h', '').trim();
                     if (s.includes(':')) {
@@ -1466,7 +1472,8 @@ Voici les données brutes :`;
             if (annexCols.humi) part2 += "<th style=\"background-color:#1e293b !important; color:white !important; padding:4px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;\">Hum.</th>";
             part2 += `</tr></thead><tbody>`;
             dData.forEach(r => {
-                part2 += `<tr class="btp-stripe"><td style="font-weight:bold; color:#003366; font-size:0.9rem;">${String(r.h).padStart(2, '0')}h00</td>`;
+                const hourFormatted = formatHour(r) || `${String(r.h).padStart(2, '0')}h00`;
+                part2 += `<tr class="btp-stripe"><td style="font-weight:bold; color:#003366; font-size:0.9rem;">${hourFormatted}</td>`;
                 if (annexCols.temp) part2 += `<td>${r.temp !== null ? parseFloat(r.temp).toFixed(1) : '--'}</td>`;
                 if (annexCols.rain) part2 += `<td>${parseFloat(r.rain || 0).toFixed(1)}</td>`;
                 if (annexCols.snow) part2 += `<td>${parseFloat(r.snow || 0).toFixed(1)}</td>`;

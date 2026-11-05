@@ -1107,9 +1107,11 @@ const CertificatMeteoManager = () => {
                 .map(obs => {
                     const dt = obs.time instanceof Date ? obs.time : new Date(obs.time);
                     const rowH = obs.h_local !== undefined ? obs.h_local : (obs.h !== undefined ? obs.h : dt.getHours());
+                    const rowM = obs.minute !== undefined ? obs.minute : (isNaN(dt.getTime()) ? 0 : dt.getMinutes());
                     return {
                         time: obs.time || dt,
                         h: rowH,
+                        minute: rowM,
                         h_local: obs.h_local !== undefined ? obs.h_local : rowH,
                         h_utc: obs.h_utc !== undefined ? obs.h_utc : rowH,
                         htn_time: obs.htn_time,
@@ -1632,10 +1634,15 @@ const CertificatMeteoManager = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        ${dayRows.map(r => `
+                        ${dayRows.map(r => {
+                            const dObj = r.time instanceof Date ? r.time : (r.time ? new Date(r.time) : null);
+                            const rowTime = (dObj && !isNaN(dObj.getTime()))
+                                ? `${String(dObj.getHours()).padStart(2, '0')}h${String(dObj.getMinutes()).padStart(2, '0')}`
+                                : `${String(r.h).padStart(2, '0')}h${String(r.minute || 0).padStart(2, '0')}`;
+                            return `
                             <tr>
                                 <td style="color:#475569;">${dateShort}</td>
-                                <td style="font-weight:bold; color:#003366; font-size:9pt;">${String(r.h).padStart(2, '0')}h00</td>
+                                <td style="font-weight:bold; color:#003366; font-size:9pt;">${rowTime}</td>
                                 ${annexCols.temp ? `<td style="font-weight:600;">${r.temp !== null ? r.temp.toFixed(1) : '-'}</td>` : ''}
                                 ${annexCols.rain ? `<td ${r.rain > 0 ? 'style="color:#2563eb; font-weight:bold;"' : ''}>${r.rain > 0 ? r.rain.toFixed(1).replace('.', ',') : '0,0'}</td>` : ''}
                                 ${annexCols.windA ? `<td>${r.w_avg !== null && r.w_avg !== undefined ? Math.round(r.w_avg) : '-'}</td>` : ''}
@@ -1645,7 +1652,7 @@ const CertificatMeteoManager = () => {
                                 ${annexCols.pres ? `<td>${r.pres !== undefined && r.pres !== null ? Math.round(r.pres) : '-'}</td>` : ''}
                                 ${annexCols.vis ? `<td>${r.vv !== undefined && r.vv !== null ? Math.round(r.vv) : '-'}</td>` : ''}
                             </tr>
-                        `).join('')}
+                        `}).join('')}
                     </tbody>
                 </table>
                 <div style="margin-top: auto; font-size: 7.5pt; color: #94a3b8; text-align: center; padding-bottom: 20px;">
@@ -1670,8 +1677,11 @@ const CertificatMeteoManager = () => {
         if (chartRefs.current['preview']) chartRefs.current['preview'].destroy();
 
         const labels = data.map(d => {
-            const h = `${String(d.h).padStart(2, '0')}h00`;
-            return isPeriod ? d.time.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' ' + h : h;
+            const dt = d.time instanceof Date ? d.time : (d.time ? new Date(d.time) : null);
+            const h = (dt && !isNaN(dt.getTime()))
+                ? `${String(dt.getHours()).padStart(2, '0')}h${String(dt.getMinutes()).padStart(2, '0')}`
+                : `${String(d.h).padStart(2, '0')}h${String(d.minute || 0).padStart(2, '0')}`;
+            return isPeriod && dt ? dt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' ' + h : h;
         });
 
         const datasets = [];
