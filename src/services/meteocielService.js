@@ -2,7 +2,9 @@
  * Service pour récupérer et parser les données d'archives de Meteociel
  */
 
-const API_METEOCIEL = '/api-meteociel';
+// ponytail: Netlify en primaire (cookie archivebotok=1, zéro 429), Vercel Edge en fallback
+const NETLIFY_BASE = 'https://visionary-chebakia-465960.netlify.app/api-meteociel';
+const API_METEOCIEL = '/api-meteociel'; // fallback Vercel Edge
 
 export const METEOCIEL_MODES = {
     TEMPERATURE_DIRECT: { id: '0', label: 'Température Actuelle (Direct)', unit: '°C' },
@@ -24,11 +26,17 @@ export const fetchMeteocielArchives = async (date, modeId) => {
         const isToday = new Date().toLocaleDateString('sv-SE') === date;
 
         const isLive = isToday && (modeId === '0' || modeId === 0);
-        const url = isLive
-            ? `${API_METEOCIEL}/obs/classement.php?archive=0&ua=&all=1&mode=0&pays=&ud=0&dec=0&alt=0&u2=1&ma=0&sub=OK`
-            : `${API_METEOCIEL}/obs/classement.php?archive=1&ua=&all=1&mode=${modeId}&pays=&ud=0&dec=0&alt=0&u2=1&ma=0&jour=${day}&mois=${month}&annee=${year}&sub=OK`;
+        const path = isLive
+            ? `/obs/classement.php?archive=0&ua=&all=1&mode=0&pays=&ud=0&dec=0&alt=0&u2=1&ma=0&sub=OK`
+            : `/obs/classement.php?archive=1&ua=&all=1&mode=${modeId}&pays=&ud=0&dec=0&alt=0&u2=1&ma=0&jour=${day}&mois=${month}&annee=${year}&sub=OK`;
 
-        const response = await fetch(url);
+        let response = null;
+        try {
+            response = await fetch(NETLIFY_BASE + path);
+            if (!response.ok) throw new Error(`Netlify ${response.status}`);
+        } catch (_) {
+            response = await fetch(API_METEOCIEL + path);
+        }
         if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
 
         // Décodage strict en Windows-1252 pour préserver les accents et caractères spéciaux français
@@ -262,28 +270,27 @@ export const fetchStationObservations = async (stationId, date, isIntra = false)
         const month = d.getMonth(); // 0-indexed for mois2
         const year = d.getFullYear();
 
-        const url = `${API_METEOCIEL}/temps-reel/obs_villes.php?code2=${stationId}&jour2=${day}&mois2=${month}&annee2=${year}${isIntra ? '&affint=1' : ''}`;
+        const path = `/temps-reel/obs_villes.php?code2=${stationId}&jour2=${day}&mois2=${month}&annee2=${year}${isIntra ? '&affint=1' : ''}`;
 
         let html = '';
         try {
-            const response = await fetch(url, { headers: BROWSER_CAMOUFLAGE_HEADERS });
-            if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
+            // 1. Netlify proxy (primaire — cookie archivebotok=1, zéro 429)
+            const response = await fetch(NETLIFY_BASE + path, { headers: BROWSER_CAMOUFLAGE_HEADERS });
+            if (!response.ok) throw new Error(`Netlify HTTP ${response.status}`);
             const buffer = await response.arrayBuffer();
             html = new TextDecoder('windows-1252').decode(buffer);
-        } catch (fetchErr) {
-            // Repli secours n°1 si proxy principal indisponible : Moteur Netlify dédié (archivebotok=1)
+        } catch (_netlifyErr) {
             try {
-                const netlifyUrl = `https://visionary-chebakia-465960.netlify.app/api-meteociel/temps-reel/obs_villes.php?code2=${stationId}&jour2=${day}&mois2=${month}&annee2=${year}${isIntra ? '&affint=1' : ''}`;
-                const netlifyResp = await fetch(netlifyUrl, { headers: BROWSER_CAMOUFLAGE_HEADERS });
-                if (!netlifyResp.ok) throw fetchErr;
-                const buffer = await netlifyResp.arrayBuffer();
+                // 2. Vercel Edge proxy (fallback)
+                const response = await fetch(API_METEOCIEL + path, { headers: BROWSER_CAMOUFLAGE_HEADERS });
+                if (!response.ok) throw new Error(`Vercel HTTP ${response.status}`);
+                const buffer = await response.arrayBuffer();
                 html = new TextDecoder('windows-1252').decode(buffer);
-            } catch (netErr) {
-                // Repli secours n°2 : proxy CORS chiffré
-                const fullTarget = `https://www.meteociel.fr/temps-reel/obs_villes.php?code2=${stationId}&jour2=${day}&mois2=${month}&annee2=${year}${isIntra ? '&affint=1' : ''}`;
-                const backupUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(fullTarget)}`;
-                const backupResp = await fetch(backupUrl, { headers: BROWSER_CAMOUFLAGE_HEADERS });
-                if (!backupResp.ok) throw fetchErr;
+            } catch (_vercelErr) {
+                // 3. AllOrigins CORS proxy (dernier recours)
+                const fullTarget = `https://www.meteociel.fr${path}`;
+                const backupResp = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(fullTarget)}`, { headers: BROWSER_CAMOUFLAGE_HEADERS });
+                if (!backupResp.ok) throw _vercelErr;
                 const buffer = await backupResp.arrayBuffer();
                 html = new TextDecoder('windows-1252').decode(buffer);
             }
