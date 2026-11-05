@@ -77,7 +77,7 @@ const BtpManager = () => {
                     (r.h_utc !== undefined ? r.h_utc : r.h) : 
                     (r.h_local !== undefined ? r.h_local : r.h);
                 return { ...r, h: targetH };
-            }).sort((a, b) => a.h - b.h);
+            }).sort((a, b) => ((a.h * 60) + (a.minute || 0)) - ((b.h * 60) + (b.minute || 0)));
             updated[dateKey] = { ...val, rows: updatedRows };
         });
         setGlobalData(updated);
@@ -693,8 +693,44 @@ Voici les données brutes :`;
         setGlobalData({}); // Reset current data
 
         try {
-            // 1. Tenter l'historique horaire & DPClim direct
+            // 1. Tenter l'historique horaire DPClim officiel direct
             let history = await weatherAPI.getStationHourlyHistoryRange(selectedStationId, startDate, endDate, (msg) => setStatus('⏳ ' + msg));
+
+            // Fallback 1: Si aucune donnée horaire (ex: station non-RADOME, panne ou date du jour), interroger le pas 6 minutes Météociel RADOME
+            if (!history || history.length === 0) {
+                setStatus('⏳ Recherche des observations 6 minutes Météociel RADOME...');
+                history = await weatherAPI.getStation6mnHistoryRange(selectedStationId, startDate, endDate, (msg) => setStatus('⏳ ' + msg));
+            }
+
+            // Fallback 2: Si toujours vide, tenter l'archive quotidienne DPClim
+            if (!history || history.length === 0) {
+                try {
+                    const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
+                    const daily = await meteoFranceClimService.fetchStationHistory(selectedStationId, startDate, endDate);
+                    if (daily && daily.length > 0) {
+                        history = daily.map(d => ({
+                            date: d.date,
+                            date_local: d.date,
+                            time: new Date(d.date + 'T12:00:00'),
+                            h: 12,
+                            h_local: 12,
+                            minute: 0,
+                            temp: d.tx !== null ? d.tx : d.tn,
+                            rain: d.rr || 0,
+                            wind: d.fxi3s || d.fxi || 0,
+                            gust: d.fxi3s || d.fxi || 0,
+                            fxi: d.fxi,
+                            fxi3s: d.fxi3s,
+                            htn_time: d.htn,
+                            htx_time: d.htx,
+                            hfxi3s_time: d.hxi,
+                            hfxi_time: d.hxi
+                        }));
+                    }
+                } catch (eDaily) {
+                    console.warn("[BTP] Fallback DPClim quotidien failed:", eDaily);
+                }
+            }
 
             const getLocalDateString = (date) => {
                 const dt = date instanceof Date ? date : new Date(date);
@@ -705,7 +741,7 @@ Voici les données brutes :`;
             };
 
             if (!history || history.length === 0) {
-                setStatus('❌ Aucune donnée DPClim trouvée pour cette période.');
+                setStatus('❌ Aucune donnée trouvée pour cette période sur cette station.');
                 return;
             }
 

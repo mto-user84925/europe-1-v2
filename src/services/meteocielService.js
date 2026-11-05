@@ -106,87 +106,126 @@ export const fetchMeteocielArchives = async (date, modeId) => {
  * @param {string} html Contenu HTML de la page Meteociel
  */
 export const parseStationObservations = (html) => {
-    // 1. Extraire les extrêmes (Regex pour être compatible Node/Navigateur)
+    // 1. Extraire les extrêmes du tableau récapitulatif
     const dailyExtremes = {};
-    const txMatch = html.match(/Température Maxi\.<br>.*?<\/font><\/b><\/td>.*?<td[^>]*>(.*?)<\/td>/is);
-    const tnMatch = html.match(/Température Mini\.<br>.*?<\/font><\/b><\/td>.*?<td[^>]*>(.*?)<\/td>/is);
-    const fxMatch = html.match(/Rafale maxi\.<br>.*?<\/font><\/i><\/b><\/td>.*?<td[^>]*>(.*?)<\/td>/is);
-    const rrMatch = html.match(/Précipitations<br>.*?<\/font><\/td>.*?<td[^>]*>(.*?)<\/td>/is);
+    const summaryRowMatch = html.match(/<tr[^>]*>\s*<td[^>]*>([\d.,]+)\s*°?C<\/td>\s*<td[^>]*>([\d.,]+)\s*°?C<\/td>\s*<td[^>]*>([\d.,]+)\s*km\/h<\/td>\s*<td[^>]*>([\d.,]+)\s*mm<\/td>/i);
+    if (summaryRowMatch) {
+        dailyExtremes.tx = parseFloat(summaryRowMatch[1].replace(',', '.'));
+        dailyExtremes.tn = parseFloat(summaryRowMatch[2].replace(',', '.'));
+        dailyExtremes.fxi = parseFloat(summaryRowMatch[3].replace(',', '.'));
+        dailyExtremes.rr = parseFloat(summaryRowMatch[4].replace(',', '.'));
+    } else {
+        const cleanVal = (str) => {
+            if (!str) return null;
+            const val = parseFloat(str.replace(/<[^>]*>/g, '').replace(/[^\d.-]/g, '').replace(',', '.'));
+            return isNaN(val) ? null : val;
+        };
+        const txMatch = html.match(/Temp[ée]rature Maxi\.<br>.*?<\/font><\/b><\/td>.*?<td[^>]*>(.*?)<\/td>/is);
+        const tnMatch = html.match(/Temp[ée]rature Mini\.<br>.*?<\/font><\/b><\/td>.*?<td[^>]*>(.*?)<\/td>/is);
+        const fxMatch = html.match(/Rafale maxi\.<br>.*?<\/font><\/i><\/b><\/td>.*?<td[^>]*>(.*?)<\/td>/is);
+        const rrMatch = html.match(/Pr[ée]cipitations<br>.*?<\/font><\/td>.*?<td[^>]*>(.*?)<\/td>/is);
+        if (txMatch) dailyExtremes.tx = cleanVal(txMatch[1]);
+        if (tnMatch) dailyExtremes.tn = cleanVal(tnMatch[1]);
+        if (fxMatch) dailyExtremes.fxi = cleanVal(fxMatch[1]);
+        if (rrMatch) dailyExtremes.rr = cleanVal(rrMatch[1]);
+    }
 
-    const cleanVal = (str) => {
-        if (!str) return null;
-        const val = parseFloat(str.replace(/<[^>]*>/g, '').replace(/[^\d.-]/g, '').replace(',', '.'));
-        return isNaN(val) ? null : val;
-    };
-
-    if (txMatch) dailyExtremes.tx = cleanVal(txMatch[1]);
-    if (tnMatch) dailyExtremes.tn = cleanVal(tnMatch[1]);
-    if (fxMatch) dailyExtremes.fxi = cleanVal(fxMatch[1]);
-    if (rrMatch) dailyExtremes.rr = cleanVal(rrMatch[1]);
-
-    // 2. Extraire le tableau des observations (Regex pour les lignes)
-    // Structure: <tr[^>]*> <td align=center>23h54</td> <td>...</td> ... </tr>
+    // 2. Extraire toutes les lignes d'observations (format 6-min "23h54" ou horaire "23 h")
     const observations = [];
-    const rowRegex = /<tr[^>]*>\s*<td[^>]*>(\d+h\d*)<\/td>([\s\S]*?)<\/tr>/gi;
-    let match;
+    const trMatches = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
 
-    while ((match = rowRegex.exec(html)) !== null) {
-        const timeStr = match[1];
-        const cellsHtml = match[2];
-        const cells = cellsHtml.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [];
+    for (const tr of trMatches) {
+        const cells = tr.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [];
+        if (cells.length < 8) continue;
 
-        if (cells.length < 4) continue;
+        const timeRaw = cells[0].replace(/<[^>]*>/g, '').trim();
+        const timeMatch = timeRaw.match(/^(\d{1,2})\s*h\s*(\d{0,2})/i);
+        if (!timeMatch) continue;
 
-        let hour, minute = 0;
-        if (timeStr.includes('h')) {
-            const parts = timeStr.split('h');
-            hour = parseInt(parts[0]);
-            minute = parseInt(parts[1]) || 0;
-        }
+        const hour = parseInt(timeMatch[1], 10);
+        const minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+        if (isNaN(hour)) continue;
+
+        const timeFormatted = `${String(hour).padStart(2, '0')}h${String(minute).padStart(2, '0')}`;
 
         const getCellVal = (idx) => {
             if (!cells[idx]) return null;
             const text = cells[idx].replace(/<[^>]*>/g, '').trim();
-            if (!text || text === '\u00A0' || text === '&nbsp;' || text === ' ') return null;
+            if (!text || text === '\u00A0' || text === '&nbsp;' || text === ' ' || text.toLowerCase().includes('aucune')) return null;
             const val = parseFloat(text.replace(/[^\d.-]/g, '').replace(',', '.'));
             return isNaN(val) ? null : val;
         };
 
-        // Heure | Visi | Temp | Humi | Rosée | Humidex | Windchill | Vent | Rafales | Pression | Précip
-        // Note: Les indices peuvent varier si certaines colonnes manquent, mais on suit l'ordre standard
-        // Temp est généralement en index 1 de cells (après Heure qui est match[1])
-        const data = {
-            time: timeStr,
-            hour,
-            minute,
-            t: getCellVal(1), // Température
-            u: getCellVal(2), // Humidité
-            td: getCellVal(3), // Point de rosée
-            ff: getCellVal(6), // Vent
-            fxi: getCellVal(7), // Rafales
-            pres: getCellVal(8), // Pression
-        };
-
-        // Précipitations (dernière cellule)
-        const precipText = cells[cells.length - 1].toLowerCase();
-        if (precipText.includes('aucune')) {
-            data.rr = 0;
+        // Extraction Vent moyen et Rafale max (Cellule 8 Météociel avec format "54 km/h (91 km/h)")
+        let windAvg = null;
+        let windGust = null;
+        const cell8Text = cells[8] ? cells[8].replace(/<[^>]*>/g, '').trim() : '';
+        const m8 = cell8Text.match(/(\d+(?:[.,]\d+)?)\s*km\/h(?:\s*\((\d+(?:[.,]\d+)?)\s*km\/h\))?/i);
+        if (m8) {
+            windAvg = parseFloat(m8[1].replace(',', '.'));
+            windGust = m8[2] ? parseFloat(m8[2].replace(',', '.')) : windAvg;
         } else {
-            data.rr = getCellVal(cells.length - 1);
+            // Scanner les cellules 6 à 9 en évitant les attributs img/tooltip
+            for (let c = 6; c <= 9; c++) {
+                if (!cells[c] || cells[c].includes('<img')) continue;
+                const text = cells[c].replace(/<[^>]*>/g, '').trim();
+                const m = text.match(/(\d+(?:[.,]\d+)?)\s*km\/h(?:\s*\((\d+(?:[.,]\d+)?)\s*km\/h\))?/i);
+                if (m) {
+                    windAvg = parseFloat(m[1].replace(',', '.'));
+                    windGust = m[2] ? parseFloat(m[2].replace(',', '.')) : windAvg;
+                    break;
+                }
+            }
         }
 
-        observations.push(data);
+        // Précipitations (dernière cellule)
+        let rain = 0;
+        const lastCellText = cells[cells.length - 1].replace(/<[^>]*>/g, '').trim().toLowerCase();
+        if (!lastCellText.includes('aucune')) {
+            const rVal = getCellVal(cells.length - 1);
+            if (rVal !== null) rain = rVal;
+        }
+
+        // Pression (cellule 9 en priorité ou recherche hPa)
+        let pres = getCellVal(9);
+        if (pres === null) {
+            for (let c = 8; c < cells.length; c++) {
+                if (!cells[c] || cells[c].includes('<img')) continue;
+                const text = cells[c].replace(/<[^>]*>/g, '').trim();
+                if (text.includes('hPa')) {
+                    pres = getCellVal(c);
+                    break;
+                }
+            }
+        }
+
+        observations.push({
+            time: timeFormatted,
+            hour,
+            minute,
+            t: getCellVal(2),         // Température
+            temp: getCellVal(2),
+            u: getCellVal(3),         // Humidité
+            hum: getCellVal(3),
+            td: getCellVal(4),        // Point de rosée
+            dewpoint: getCellVal(4),
+            ff: windAvg,              // Vent moyen km/h
+            wind: windAvg,
+            fxi: windGust,            // Rafale max km/h
+            gust: windGust,
+            fxi3s: windGust,
+            pres: pres,               // Pression hPa
+            rr: rain,                 // Précipitations mm
+            rain: rain
+        });
     }
 
     return {
         extremes: dailyExtremes,
-        observations: observations.reverse() // Chronologique
+        observations: observations.reverse() // Ordre chronologique (00h00 -> 23h54)
     };
 };
 
-/**
- * Récupère le tableau des observations (horaire ou intra-horaire)
- */
 export const fetchStationObservations = async (stationId, date, isIntra = false) => {
     try {
         const d = new Date(date);

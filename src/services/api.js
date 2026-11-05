@@ -87,14 +87,46 @@ export const weatherAPI = {
                 }
             }
 
-            // 3. Si aucune donnée ou si c'est dans le passé (J-1 ou avant) -> DPClim officiel direct
+            // 3. Pour le pas de 6 minutes (240 mesures/jour) dans le passé : interroger Météociel RADOME direct
+            if (finalData.length === 0) {
+                try {
+                    const { fetchStationObservations } = await import('./meteocielService');
+                    const mData = await fetchStationObservations(stationId, dateStr, true);
+                    if (mData && mData.observations && mData.observations.length > 0) {
+                        finalData = mData.observations.map(obs => {
+                            const [hh, mm] = (obs.time || '00h00').split('h').map(n => parseInt(n, 10) || 0);
+                            const obsDate = new Date(targetDate);
+                            obsDate.setHours(hh, mm, 0, 0);
+                            return {
+                                time: obsDate,
+                                date: dateStr,
+                                date_local: dateStr,
+                                h: hh,
+                                minute: mm,
+                                temp: obs.temp,
+                                hum: obs.hum,
+                                rain: obs.rain || 0,
+                                wind: obs.wind,
+                                gust: obs.gust,
+                                fxi: obs.fxi,
+                                fxi3s: obs.fxi3s,
+                                dewpoint: obs.dewpoint,
+                                pressure: obs.pres
+                            };
+                        });
+                    }
+                } catch (errMeteociel) {
+                    console.warn("[API] Meteociel 6mn fallback failed:", errMeteociel);
+                }
+            }
+
+            // 4. Si aucune donnée 6-minute trouvée -> DPClim officiel horaire
             if (finalData.length === 0) {
                 try {
                     const { meteoFranceClimService } = await import('./meteoFranceClimService');
                     const dpHourly = await meteoFranceClimService.fetchStationHourlyHistory(stationId, dateStr, dateStr);
                     if (dpHourly && dpHourly.length > 0) {
                         finalData = dpHourly;
-                    // ponytail: pas de données horaires synthétiques / interpolées. Zéro falsification météorologique.
                     }
                 } catch (errDPClim) {
                     console.warn("[API] Fallback DPClim:", errDPClim);
@@ -116,7 +148,37 @@ export const weatherAPI = {
     /**
      * Get hourly observations for a specific station (100% DPClim)
      */
-    getStationHourlyHistory: async (stationId, dateObj = null) => {
+    /**
+     * Get 6-minute observations for a range of dates (240 points par jour)
+     */
+    getStation6mnHistoryRange: async (stationId, startDate, endDate, onProgress = () => {}) => {
+        if (!stationId || !startDate || !endDate) return [];
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const allObs = [];
+        let curr = new Date(start);
+        let count = 0;
+        const totalDays = Math.max(1, Math.round((end - start) / 86400000) + 1);
+
+        while (curr <= end) {
+            count++;
+            const dStr = toLocalISODate(curr);
+            onProgress(`Récupération 6 minutes ${dStr} (${count}/${totalDays})…`);
+            try {
+                const dayObs = await weatherAPI.getStation6mnHistory(stationId, curr);
+                if (dayObs && dayObs.length > 0) {
+                    allObs.push(...dayObs);
+                }
+            } catch (e) {
+                console.warn(`[API] 6mn range error on ${dStr}:`, e);
+            }
+            curr.setDate(curr.getDate() + 1);
+            if (count % 3 === 0) await new Promise(r => setTimeout(r, 80));
+        }
+        return allObs;
+    },
+
+        getStationHourlyHistory: async (stationId, dateObj = null) => {
         if (!stationId) return [];
         const d = dateObj ? new Date(dateObj) : new Date(Date.now() - 86400000);
         const dStr = toLocalISODate(d);

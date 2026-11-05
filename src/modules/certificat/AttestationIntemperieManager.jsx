@@ -972,7 +972,7 @@ const AttestationIntemperieManager = () => {
             .cert-page { 
                 width: 210mm; 
                 max-height: 297mm; 
-                padding: 5mm 8mm; 
+                padding: 4mm 6mm; 
                 box-sizing: border-box; 
                 position: relative; 
                 page-break-after: always;
@@ -989,7 +989,7 @@ const AttestationIntemperieManager = () => {
             .cert-section-header { background: #003366 !important; color: white !important; padding: 4px 10px; font-weight: bold; margin-top: 8px; text-transform: uppercase; border-left: 5px solid #000; font-size: 9pt; }
             .cert-table { width: 100%; border-collapse: collapse; margin-top: 3px; font-size: 8.5pt; line-height: 1.1; }
             .cert-table th { background: #1e293b !important; color: white !important; padding: 3px 2px; border: 1px solid #000; text-transform: uppercase; font-size: 8pt; }
-            .cert-table td { padding: 2px; border: 1px solid #000; text-align: center; }
+            .cert-table td { padding: 1.5px 2px; border: 1px solid #000; text-align: center; }
             .cert-table tr:nth-child(even) { background-color: #f8fafc !important; }
             .cert-info-row { display: flex; font-size: 9pt; margin-bottom: 3px; align-items: center; }
             .cert-info-label { width: 140px; font-weight: bold; color: #003366; }
@@ -1137,7 +1137,7 @@ const AttestationIntemperieManager = () => {
 
             return `
                 <div class="cert-page">
-                    <div class="cert-main-title-box" style="margin-bottom: 6px; border: 1.5px solid #000; padding: 4px 8px; background: #fff;">
+                    <div class="cert-main-title-box" style="margin-bottom: 3px; border: 1.5px solid #000; padding: 2px 6px; background: #fff;">
                         <h2 style="font-size: 11pt; margin:0; color:#003366; text-transform:uppercase; font-weight: 800;">ANNEXE 1 : DOSSIER DE CLASSIFICATION</h2>
                         <div style="font-size: 8.5pt; margin-top:2px; color:#64748b; font-weight:bold; text-transform: uppercase;">Mois de ${monthName}</div>
                     </div>
@@ -1184,23 +1184,23 @@ const AttestationIntemperieManager = () => {
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${isRain || isStandardRain ? '<span style="color:#e11d48; font-weight:900;">INTEMPÉRIES</span>' : getRainLabel(s.rainTotal)}
-                                            ${s.rainMaxTime ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(Pic: ${s.rainMaxTime})</span>` : ''}
+                                            ${s.rainMaxTime ? `<div style="font-size:8pt; color:#1e293b; font-weight:bold; line-height:1.0; margin-top:1px;">(Pic: ${s.rainMaxTime})</div>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${getTempMiniLabel(s.tmin, showPersonalization ? Math.min(0, limitTemp) : 0)}
-                                            ${s.tminTime ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(${s.tminTime})</span>` : ''}
+                                            ${s.tminTime ? `<div style="font-size:8pt; color:#1e293b; font-weight:bold; line-height:1.0; margin-top:1px;">(${s.tminTime})</div>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${getTempMaxiLabel(s.tmax, showPersonalization ? limitTempMax : 99)}
-                                            ${s.tmaxTime ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(${s.tmaxTime})</span>` : ''}
+                                            ${s.tmaxTime ? `<div style="font-size:8pt; color:#1e293b; font-weight:bold; line-height:1.0; margin-top:1px;">(${s.tmaxTime})</div>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${getWindLabel(s.gustMax, showPersonalization ? Math.max(60, limitWind) : 60)}
-                                            ${s.gustTime && s.gustTime !== 'N/A' ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(${s.gustTime})</span>` : ''}
+                                            ${s.gustTime && s.gustTime !== 'N/A' ? `<div style="font-size:8pt; color:#1e293b; font-weight:bold; line-height:1.0; margin-top:1px;">(${s.gustTime})</div>` : ''}
                                         </td>
                                         <td style="border:1px solid #000; font-weight:bold; color:${(s.fxiMax || s.gustMax) >= 60 ? '#dc2626' : '#1e293b'};">
                                             ${Math.round(s.fxiMax || s.gustMax)} km/h
-                                            ${s.fxiTime && s.fxiTime !== 'N/A' ? `<span style="font-size:7.5pt; color:#334155; font-weight:bold;"><br/>(${s.fxiTime})</span>` : ''}
+                                            ${s.fxiTime && s.fxiTime !== 'N/A' ? `<div style="font-size:8pt; color:#1e293b; font-weight:bold; line-height:1.0; margin-top:1px;">(${s.fxiTime})</div>` : ''}
                                         </td>
                                     </tr>
                                 `;
@@ -1208,7 +1208,7 @@ const AttestationIntemperieManager = () => {
                         </tbody>
                     </table>
 
-                    <div style="margin-top:5px; padding:4px 8px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:4px; page-break-inside:avoid; break-inside:avoid;">
+                    <div style="margin-top:3px; padding:2px 6px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:4px; page-break-inside:avoid; break-inside:avoid;">
                         <div style="font-weight:800; color:#003366; margin-bottom:2px; text-transform:uppercase; font-size:7.5pt;">RAPPEL DES SEUILS</div>
                         <div style="font-size:7pt; color:#475569;">
                             Pluie &ge; ${limitRain}mm | Gel &le; ${limitTemp}&deg;C | Vent &ge; ${limitWind}km/h | Chaleur &ge; ${limitTempMax}&deg;C
@@ -1269,15 +1269,15 @@ const AttestationIntemperieManager = () => {
                                         <td style="border:1px solid #000; font-weight:bold;">${d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: '2-digit', year: 'numeric' })}</td>
                                         <td style="border:1px solid #000; ${s.tmin <= 0 ? 'color:red; font-weight:bold;' : ''}">
                                             ${s.tmin.toFixed(1).replace('.', ',')}
-                                            ${s.tminTime ? `<span style="font-size:7.5pt; font-weight:bold; color:#334155;"><br/>${s.tminTime}</span>` : ''}
+                                            ${s.tminTime ? `<div style="font-size:8pt; color:#1e293b; font-weight:bold; line-height:1.0; margin-top:1px;">${s.tminTime}</div>` : ''}
                                         </td>
                                         <td style="border:1px solid #000;">
                                             ${s.tmax.toFixed(1).replace('.', ',')}
-                                            ${s.tmaxTime ? `<span style="font-size:7.5pt; font-weight:bold; color:#334155;"><br/>${s.tmaxTime}</span>` : ''}
+                                            ${s.tmaxTime ? `<div style="font-size:8pt; color:#1e293b; font-weight:bold; line-height:1.0; margin-top:1px;">${s.tmaxTime}</div>` : ''}
                                         </td>
                                         <td style="border:1px solid #000; ${s.rainTotal >= 10 ? 'color:blue; font-weight:bold;' : ''}">
                                             ${s.rainTotal.toFixed(1).replace('.', ',')}
-                                            ${s.rainMaxTime ? `<span style="font-size:7.5pt; font-weight:bold; color:#334155;"><br/>Pic: ${s.rainMaxTime}</span>` : ''}
+                                            ${s.rainMaxTime ? `<div style="font-size:8pt; color:#1e293b; font-weight:bold; line-height:1.0; margin-top:1px;">Pic: ${s.rainMaxTime}</div>` : ''}
                                         </td>
                                         <td style="border:1px solid #000; ${s.gustMax >= 60 ? 'color:#ea580c; font-weight:bold;' : ''}">
                                             ${Math.round(s.gustMax)}

@@ -349,6 +349,7 @@ const CertificatMeteoManager = () => {
                                 const validGustRows = dailyRows.filter(r => (r.fxi3s && r.fxi3s > 0) || (r.fxi && r.fxi > 0));
                                 let maxGustVal = '-';
                                 let maxGustHour = null;
+                                let maxGustDate = null;
                                 if (validGustRows.length > 0) {
                                     const maxRow = validGustRows.reduce((max, r) => {
                                         const rGust = r.fxi3s || r.fxi || 0;
@@ -1412,15 +1413,16 @@ const CertificatMeteoManager = () => {
             getValue = (s) => {
                 if (!s.maxGust || s.maxGust === '-') return '-';
                 let timeStr = '';
-                if (typeof s.maxGustDate === 'string' && s.maxGustDate.includes('h')) {
-                    timeStr = s.maxGustDate;
-                } else if (s.maxGustDate) {
-                    const tDate = new Date(s.maxGustDate);
+                const hVal = s.maxGustHour || s.maxGustDate;
+                if (typeof hVal === 'string' && hVal.includes('h')) {
+                    timeStr = hVal;
+                } else if (hVal) {
+                    const tDate = new Date(hVal);
                     if (!isNaN(tDate.getTime())) {
                         timeStr = `${String(tDate.getHours()).padStart(2, '0')}h${String(tDate.getMinutes()).padStart(2, '0')}`;
                     }
                 }
-                return `<strong>${s.maxGust} km/h</strong>${timeStr ? ` <span style="font-size:8.5pt; color:#475569; font-weight:bold;">(${timeStr})</span>` : ''}`;
+                return `<strong>${s.maxGust} km/h</strong>${timeStr ? ` <span style="font-size:8.5pt; color:#1e293b; font-weight:bold;">(${timeStr})</span>` : ''}`;
             };
         } else if (certType.includes('Pluie') || certType.includes('Inondation') || certType.includes('Précip') || certType.includes('Precip')) {
             valueLabel = "CUMUL PLUIE";

@@ -515,16 +515,9 @@ export const meteoFranceClimService = {
             } else if (fileResp.status === 401) {
                 token = await meteoAuth.generateToken();
                 await sleep(1500);
-            } else if (fileResp.status === 204) {
+            } else if (fileResp.status === 204 || fileResp.status === 404) {
                 onProgress(`Génération horaire en cours… (${attempt}/15)`);
                 await sleep(2500);
-            } else if (fileResp.status === 404) {
-                if (attempt <= 6) {
-                    onProgress(`Génération horaire en cours… (${attempt}/15)`);
-                    await sleep(2500);
-                } else {
-                    break;
-                }
             } else if (fileResp.status === 410) {
                 break;
             } else {
