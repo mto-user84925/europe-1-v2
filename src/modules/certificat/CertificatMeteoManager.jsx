@@ -225,90 +225,58 @@ const CertificatMeteoManager = () => {
         generateReport();
     }, [globalData, clientName, clientAddress, clientCity, clientZip, startDate, endDate, isPeriod, certType, showCharts, multiChartMode, chartDesign, showWindAvg, nearbyStations, selectedStationDist, showValuesUnderTitle, showWindParams, showRainParams, showTempParams, stationMeteo, showDetailedRecords, stationMeteoTemp, stationMeteoRain, stationMeteoWind, annexCols, customClassification, customConclusion, customSynthesis]);
 
-    // --- Calcul "Live" des stations proches si la ville change ---
+    // --- Calcul "Live" des stations proches si la ville ou station change ---
     useEffect(() => {
-        const timer = setTimeout(() => {
-            if (clientCity && globalData.rows) {
-                const finalEndDate = isPeriod ? endDate : startDate;
-                refreshNearbyStations(startDate, finalEndDate);
-            }
-        }, 1000);
-        return () => clearTimeout(timer);
+        if ((clientCity || selectedStationId) && globalData.rows) {
+            const finalEndDate = isPeriod ? endDate : startDate;
+            refreshNearbyStations(startDate, finalEndDate);
+        }
     }, [clientCity, selectedStationId, certType, startDate, endDate, isPeriod]);
 
     const refreshNearbyStations = async (startDate, endDate) => {
-        if (!clientCity) return;
+        if (!clientCity && !selectedStationId) return;
 
         try {
-            console.log("[Certificat] Refresh Stations Proches pour:", clientCity);
-            const cityResults = await weatherAPI.searchCity(clientCity);
-            if (!cityResults || cityResults.length === 0) {
-                console.warn("Ville inconnue:", clientCity);
-                return;
-            }
+            console.log("[Certificat] Refresh Stations Proches pour:", clientCity || selectedStationId);
+            let cityLat = null;
+            let cityLon = null;
 
-            const cityLat = cityResults[0].lat;
-            const cityLon = cityResults[0].lon;
-
-            // Calcul distances : Essai RPC Supabase puis Fallback 100% autonome local
-            let dists = null;
-            if (supabase) {
+            if (clientCity) {
                 try {
-                    const { data, error } = await supabase.rpc('find_nearest_stations', {
-                        lat_input: cityLat,
-                        lon_input: cityLon,
-                        limit_count: 30
-                    });
-                    if (!error && data && data.length > 0) dists = data;
-                } catch (e) { }
-            }
-
-            if (!dists || dists.length === 0) {
-                try {
-                    const stationsData = await import('../../data/stations_list.json');
-                    const list = stationsData.default?.features || stationsData.features || [];
-                    const R = 6371;
-                    dists = list.map(f => {
-                        const [lonS, latS] = f.geometry.coordinates;
-                        const dLat = (latS - cityLat) * Math.PI / 180;
-                        const dLon = (lonS - cityLon) * Math.PI / 180;
-                        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                            Math.cos(cityLat * Math.PI / 180) * Math.cos(latS * Math.PI / 180) *
-                            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                        const dKm = Math.round(R * c * 10) / 10;
-                        return { id: f.properties.num, name: f.properties.nom, dist_km: dKm };
-                    }).sort((a, b) => a.dist_km - b.dist_km).slice(0, 30);
-                } catch (e) {
-                    console.error("Erreur calcul stations proches local:", e);
+                    const cityResults = await weatherAPI.searchCity(clientCity);
+                    if (cityResults && cityResults.length > 0) {
+                        cityLat = cityResults[0].lat;
+                        cityLon = cityResults[0].lon;
+                    }
+                } catch (eC) {
+                    console.warn("[Certificat] Recherche ville gouv échouée:", eC);
                 }
             }
 
+            // Fallback direct et immédiat sur les coordonnées de la station sélectionnée
+            const { getStationCoords, findNearestStations } = await import('../../services/stationResolutionService');
+            if (cityLat == null || cityLon == null) {
+                const sCoords = getStationCoords(selectedStationId);
+                if (sCoords) {
+                    cityLat = sCoords.lat;
+                    cityLon = sCoords.lon;
+                }
+            }
+
+            if (cityLat == null || cityLon == null) return;
+
+            // Calcul 100% autonome et immédiat (<1ms) des stations les plus proches
+            const dists = findNearestStations(cityLat, cityLon, null, 30);
             if (!dists || dists.length === 0) return;
 
             console.log(`[Certificat] ${dists.length} stations candidates trouvées.`);
 
-            // Extraire la distance de la station SÉLECTIONNÉE si elle est dans la liste (ce qui est probable si on a pris large)
+            // Extraire la distance de la station SÉLECTIONNÉE si elle est dans la liste
             const currentStation = dists.find(s => s.id === selectedStationId);
             if (currentStation) {
-                setSelectedStationDist(currentStation.dist_km);
+                setSelectedStationDist(currentStation.distKm);
             } else {
-                // Si pas trouvée dans le top 20, on peut essayer de calculer manuellement si on a ses coords dans 'stations'
-                const sLocal = stations.find(s => s.station_id === selectedStationId);
-                if (sLocal && (sLocal.lat || sLocal.latest?.lat)) {
-                    const latS = sLocal.lat || sLocal.latest.lat;
-                    const lonS = sLocal.lon || sLocal.latest.lon;
-                    const R = 6371;
-                    const dLat = (latS - cityLat) * Math.PI / 180;
-                    const dLon = (lonS - cityLon) * Math.PI / 180;
-                    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                        Math.cos(cityLat * Math.PI / 180) * Math.cos(latS * Math.PI / 180) *
-                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                    setSelectedStationDist(R * c);
-                } else {
-                    setSelectedStationDist(null);
-                }
+                setSelectedStationDist(null);
             }
 
             // Candidats stations proches (toutes les stations ordonnées par distance, hors station sélectionnée)
@@ -316,6 +284,24 @@ const CertificatMeteoManager = () => {
             const targetEnd = isPeriod ? endDate : startDate;
             const isHistorical = targetEnd < new Date().toLocaleDateString('sv-SE');
             const validStations = [];
+
+            // Affichage immédiat des 3 plus proches (zéro écran blanc sur macOS Safari / Windows)
+            const initialCandidates = allCandidates.slice(0, 3).map(s => ({
+                id: s.id,
+                name: s.name || s.id,
+                dist: s.distKm,
+                maxGust: '-',
+                maxGustHour: null,
+                maxGustDate: null,
+                rain: '-',
+                hasRainMeasure: true,
+                minTemp: '-',
+                maxTemp: '-',
+                snow: '-'
+            }));
+            if (nearbyStations.length === 0) {
+                setNearbyStations(initialCandidates);
+            }
 
             const isStationValidForParam = (s, type) => {
                 if (!s) return false;
@@ -357,7 +343,7 @@ const CertificatMeteoManager = () => {
                                         return rGust > mGust ? r : max;
                                     }, validGustRows[0]);
                                     maxGustVal = Math.round(maxRow.fxi3s || maxRow.fxi);
-                                    maxGustHour = maxRow.hxi || null;
+                                    maxGustHour = maxRow.hfxi3s || maxRow.hfxi || maxRow.hxi || null;
                                     maxGustDate = maxRow.date || null;
                                 }
 
@@ -375,7 +361,7 @@ const CertificatMeteoManager = () => {
                                 return {
                                     id: s.id,
                                     name: s.name || s.id,
-                                    dist: s.dist_km,
+                                    dist: s.distKm || s.dist_km,
                                     maxGust: maxGustVal,
                                     maxGustHour: maxGustHour,
                                     maxGustDate: maxGustDate,
@@ -438,7 +424,7 @@ const CertificatMeteoManager = () => {
                         return {
                             id: s.id,
                             name: s.name || s.id,
-                            dist: s.dist_km,
+                            dist: s.distKm || s.dist_km,
                             maxGust: maxGustVal,
                             maxGustDate: maxGustHour,
                             rain: hasRain ? totalRain.toFixed(1).replace('.', ',') : '-',
@@ -452,7 +438,7 @@ const CertificatMeteoManager = () => {
                     return {
                         id: s.id,
                         name: s.name || s.id,
-                        dist: s.dist_km,
+                        dist: s.distKm || s.dist_km,
                         maxGust: '-',
                         maxGustDate: null,
                         rain: '-',
@@ -465,7 +451,7 @@ const CertificatMeteoManager = () => {
                     return {
                         id: s.id,
                         name: s.name || s.id,
-                        dist: s.dist_km,
+                        dist: s.distKm || s.dist_km,
                         maxGust: '-',
                         maxGustDate: null,
                         rain: '-',
@@ -477,9 +463,9 @@ const CertificatMeteoManager = () => {
                 }
             };
 
-            // Parcourir les stations candidates par lots de 4 pour trouver STRICTEMENT les 3 stations les plus proches
-            // mesurant le paramètre requis (si une station ne mesure pas, on passe au suivant)
-            const BATCH_SIZE = 4;
+            // Parcourir les stations candidates par lots de 2 pour trouver STRICTEMENT les 3 stations les plus proches
+            // mesurant le paramètre requis (si une station ne mesure pas, on passe à la suivante)
+            const BATCH_SIZE = 2;
             for (let i = 0; i < allCandidates.length && validStations.length < 3; i += BATCH_SIZE) {
                 const batch = allCandidates.slice(i, i + BATCH_SIZE);
                 const batchResults = await Promise.all(batch.map(s => fetchCandidateObs(s)));
@@ -489,14 +475,13 @@ const CertificatMeteoManager = () => {
                         validStations.push(res);
                         console.log(`[Certificat] Station retenue (${validStations.length}/3) : ${res.name} (${res.dist} km) - Rafale: ${res.maxGust} km/h - Pluie: ${res.rain} mm`);
                         if (validStations.length === 3) break;
-                    } else {
-                        console.log(`[Certificat] Station ignorée : ${res.name} (ne mesure pas le paramètre requis pour ${certType})`);
                     }
                 }
             }
 
-            console.log(`[Certificat] ${validStations.length} stations valides trouvées pour ${certType}`);
-            setNearbyStations(validStations.slice(0, 3));
+            if (validStations.length > 0) {
+                setNearbyStations(validStations.slice(0, 3));
+            }
         } catch (errGeo) {
             console.error("Erreur refreshNearbyStations:", errGeo);
         }
@@ -987,30 +972,36 @@ const CertificatMeteoManager = () => {
 
             // 1. Récupération préalable des indicateurs officiels Météo-France DPClim (FXI 3s OMM, FXI Brut, Tx, Tn, RR)
             let dailyOfficialMap = {};
+            let resolvedRefStations = null;
             try {
                 const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
+                const { resolveReferenceStations } = await import('../../services/stationResolutionService');
                 const dailyRows = await meteoFranceClimService.fetchStationHistory(selectedStationId, startDate, finalEndDate);
                 if (dailyRows && dailyRows.length > 0) {
                     dailyRows.forEach(d => { dailyOfficialMap[d.date] = d; });
                 }
-                // Si DOUAI (59178001), enrichir avec CAMBRAI-EPINOY (62298001) pour le vent
-                if (selectedStationId === '59178001') {
-                    try {
-                        const cambraiDaily = await meteoFranceClimService.fetchStationHistory('62298001', startDate, finalEndDate);
-                        if (cambraiDaily && cambraiDaily.length > 0) {
-                            cambraiDaily.forEach(w => {
-                                if (!dailyOfficialMap[w.date]) {
-                                    dailyOfficialMap[w.date] = { date: w.date };
-                                }
-                                dailyOfficialMap[w.date].fxi3s = w.fxi3s;
-                                dailyOfficialMap[w.date].fxi = w.fxi;
-                                dailyOfficialMap[w.date].hxi = w.hxi;
-                                dailyOfficialMap[w.date].dxi = w.dxi;
-                            });
+
+                // Résolution universelle automatique des postes de référence (si poste sans anémomètre, ex: Douai)
+                resolvedRefStations = await resolveReferenceStations({
+                    selectedStationId,
+                    startDate,
+                    endDate: finalEndDate,
+                    dailyRows,
+                    onProgress: (msg) => setStatus('⏳ ' + msg)
+                });
+
+                if (resolvedRefStations.windStation && resolvedRefStations.windDailyRows) {
+                    resolvedRefStations.windDailyRows.forEach(w => {
+                        if (!dailyOfficialMap[w.date]) {
+                            dailyOfficialMap[w.date] = { date: w.date };
                         }
-                    } catch (eC) {
-                        console.warn("[Certificat] Échec DPClim Cambrai:", eC);
-                    }
+                        dailyOfficialMap[w.date].fxi3s = w.fxi3s;
+                        dailyOfficialMap[w.date].fxi = w.fxi;
+                        dailyOfficialMap[w.date].hfxi3s = w.hfxi3s;
+                        dailyOfficialMap[w.date].hfxi = w.hfxi;
+                        dailyOfficialMap[w.date].hxi = w.hxi;
+                        dailyOfficialMap[w.date].dxi = w.dxi;
+                    });
                 }
             } catch (eDaily) {
                 console.warn("[Certificat] DPClim quotidien info:", eDaily);
@@ -1029,7 +1020,7 @@ const CertificatMeteoManager = () => {
                     rain: (d.rain !== null && d.rain !== undefined && !isNaN(d.rain) && d.rain >= 0 && d.rain < 150) ? d.rain : 0,
                     wind: d.wind || 0,
                     gust: d.gust || d.fxi || 0,
-                    fxi3s: d.fxi3s || d.gust || 0,
+                    fxi3s: d.fxi3s || null,
                     fxi: d.fxi || d.gust || 0,
                     hum: d.hum,
                     pres: d.pressure || d.pres,
@@ -1038,38 +1029,40 @@ const CertificatMeteoManager = () => {
                 }));
             }
 
-            // Si Douai (59178001), récupérer les vents 6mn de Cambrai-Épinoy (62298001) et les synchroniser
-            if (selectedStationId === '59178001' && history && history.length > 0) {
+            // Si poste sans anémomètre, synchroniser les vents 6mn du poste vent de référence le plus proche
+            if (resolvedRefStations?.windStation && history && history.length > 0) {
                 try {
-                    const cambrai6mn = await weatherAPI.getStation6mnHistoryRange('62298001', startDate, finalEndDate);
-                    if (cambrai6mn && cambrai6mn.length > 0) {
-                        const cambraiMap = new Map();
-                        const cambraiHourlyMap = new Map();
-                        cambrai6mn.forEach(w => {
+                    const windStationId = resolvedRefStations.windStation.id;
+                    const wind6mn = await weatherAPI.getStation6mnHistoryRange(windStationId, startDate, finalEndDate);
+                    if (wind6mn && wind6mn.length > 0) {
+                        const windMap = new Map();
+                        const windHourlyMap = new Map();
+                        wind6mn.forEach(w => {
                             const dt = w.time instanceof Date ? w.time : new Date(w.time);
                             const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
                             const kH = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}`;
-                            cambraiMap.set(k, w);
-                            if (!cambraiHourlyMap.has(kH) || (w.gust || 0) > (cambraiHourlyMap.get(kH)?.gust || 0)) {
-                                cambraiHourlyMap.set(kH, w);
+                            windMap.set(k, w);
+                            if (!windHourlyMap.has(kH) || (w.gust || 0) > (windHourlyMap.get(kH)?.gust || 0)) {
+                                windHourlyMap.set(kH, w);
                             }
                         });
                         history.forEach(h => {
                             const dt = h.time instanceof Date ? h.time : new Date(h.time);
                             const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
                             const kH = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}`;
-                            const cMatch = cambraiMap.get(k) || cambraiHourlyMap.get(kH);
+                            const cMatch = windMap.get(k) || windHourlyMap.get(kH);
                             if (cMatch) {
                                 h.wind = cMatch.wind;
                                 h.gust = cMatch.gust;
-                                h.fxi3s = cMatch.fxi3s || cMatch.gust;
                                 h.fxi = cMatch.fxi || cMatch.gust;
+                                h.fxi3s = cMatch.fxi3s || null;
                                 h.hfxi3s_time = cMatch.hfxi3s_time;
+                                h.hfxi_time = cMatch.hfxi_time;
                             }
                         });
                     }
                 } catch (eC6) {
-                    console.warn("[Certificat] Échec synchronisation 6mn vent Cambrai:", eC6);
+                    console.warn("[Certificat] Échec synchronisation 6mn vent station déléguée:", eC6);
                 }
             }
 
@@ -1095,8 +1088,8 @@ const CertificatMeteoManager = () => {
                     fxi: d.fxi,
                     htn_time: d.htn,
                     htx_time: d.htx,
-                    hfxi3s_time: d.hxi,
-                    hfxi_time: d.hxi
+                    hfxi3s_time: d.hfxi3s || d.hxi,
+                    hfxi_time: d.hfxi || d.hxi
                 }));
             }
 
@@ -1128,8 +1121,8 @@ const CertificatMeteoManager = () => {
                         temp: obs.temp,
                         rain: obs.rain || 0,
                         w_avg: obs.wind !== null && obs.wind !== undefined ? Math.round(obs.wind) : 0,
-                        w_gst: Math.round(obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s : (obs.gust || 0)),
-                        w_fxi: Math.round(obs.fxi !== undefined && obs.fxi !== null ? obs.fxi : (obs.gust || 0)),
+                        w_gst: (obs.fxi3s !== undefined && obs.fxi3s !== null) ? Math.round(obs.fxi3s) : null,
+                        w_fxi: (obs.fxi !== undefined && obs.fxi !== null) ? Math.round(obs.fxi) : (obs.gust ? Math.round(obs.gust) : null),
                         humi: obs.hum,
                         pres: obs.pres,
                         vv: obs.vv
@@ -1142,8 +1135,10 @@ const CertificatMeteoManager = () => {
             }
 
             // Calcul des stats de la période
-            const windMaxRow = rows.reduce((prev, curr) => (Number(prev.w_gst) >= Number(curr.w_gst) ? prev : curr), rows[0]);
-            const fxiMaxRow = rows.reduce((prev, curr) => (Number(prev.w_fxi || prev.w_gst || 0) >= Number(curr.w_fxi || curr.w_gst || 0) ? prev : curr), rows[0]);
+            const validGustRows = rows.filter(r => r.w_gst !== null && r.w_gst !== undefined);
+            const windMaxRow = validGustRows.length > 0 ? validGustRows.reduce((prev, curr) => (Number(prev.w_gst) >= Number(curr.w_gst) ? prev : curr), validGustRows[0]) : rows[0];
+            const validFxiRows = rows.filter(r => r.w_fxi !== null && r.w_fxi !== undefined);
+            const fxiMaxRow = validFxiRows.length > 0 ? validFxiRows.reduce((prev, curr) => (Number(prev.w_fxi) >= Number(curr.w_fxi) ? prev : curr), validFxiRows[0]) : windMaxRow;
             const rainMaxRow = rows.reduce((prev, curr) => (Number(prev.rain) >= Number(curr.rain) ? prev : curr), rows[0]);
 
             const validTempRows = rows.filter(r => r.temp !== null && r.temp !== undefined && !isNaN(r.temp));
@@ -1171,11 +1166,11 @@ const CertificatMeteoManager = () => {
                 tempMinDate: tempMinRow.date || (tempMinRow.time instanceof Date ? tempMinRow.time.toLocaleDateString('sv-SE') : null),
                 rainTotal: rows.reduce((acc, r) => acc + (Number(r.rain) || 0), 0),
                 snowTotal: rows.reduce((acc, r) => acc + (Number(r.temp) <= 0 ? (Number(r.rain) || 0) : 0), 0),
-                windGustMax: Math.round(windMaxRow.w_gst),
+                windGustMax: Math.round(windMaxRow.w_gst || 0),
                 windGustMaxTime: formatHourStr(windMaxRow.hfxi3s_time, windMaxRow.time),
                 windGustMaxDate: windMaxRow.date || (windMaxRow.time instanceof Date ? windMaxRow.time.toLocaleDateString('sv-SE') : null),
-                windFxiMax: Math.round(fxiMaxRow ? (fxiMaxRow.w_fxi || fxiMaxRow.w_gst || 0) : windMaxRow.w_gst),
-                windFxiMaxTime: formatHourStr(fxiMaxRow?.hfxi_time || fxiMaxRow?.hfxi3s_time || windMaxRow.hfxi3s_time, fxiMaxRow?.time || windMaxRow.time),
+                windFxiMax: Math.round(fxiMaxRow ? (fxiMaxRow.w_fxi || 0) : (windMaxRow.w_gst || 0)),
+                windFxiMaxTime: formatHourStr(fxiMaxRow?.hfxi_time || windMaxRow.hfxi_time || windMaxRow.hfxi3s_time, fxiMaxRow?.time || windMaxRow.time),
                 windFxiMaxDate: fxiMaxRow?.date || (fxiMaxRow?.time instanceof Date ? fxiMaxRow.time.toLocaleDateString('sv-SE') : null),
                 windAvgMax: Math.round(Math.max(...rows.map(r => Number(r.w_avg) || 0))),
                 rainMaxH: rainMaxRow.rain,
@@ -1189,11 +1184,11 @@ const CertificatMeteoManager = () => {
             if (singleOfficial && !isPeriod) {
                 if (singleOfficial.fxi3s !== null && singleOfficial.fxi3s > 0) {
                     stats.windGustMax = Math.round(singleOfficial.fxi3s);
-                    stats.windGustMaxTime = singleOfficial.hxi || stats.windGustMaxTime;
+                    stats.windGustMaxTime = singleOfficial.hfxi3s || singleOfficial.hxi || stats.windGustMaxTime;
                 }
                 if (singleOfficial.fxi !== null && singleOfficial.fxi > 0) {
                     stats.windFxiMax = Math.round(singleOfficial.fxi);
-                    stats.windFxiMaxTime = stats.windFxiMaxTime || singleOfficial.hxi;
+                    stats.windFxiMaxTime = singleOfficial.hfxi || singleOfficial.hxi || stats.windFxiMaxTime;
                 }
                 if (singleOfficial.tx !== null) {
                     stats.tempMax = singleOfficial.tx;
@@ -1211,15 +1206,15 @@ const CertificatMeteoManager = () => {
                 if (validFxi3s.length > 0) {
                     const maxD = validFxi3s.reduce((m, d) => d.fxi3s > m.fxi3s ? d : m, validFxi3s[0]);
                     stats.windGustMax = Math.round(maxD.fxi3s);
-                    stats.windGustMaxTime = maxD.hxi || stats.windGustMaxTime;
+                    stats.windGustMaxTime = maxD.hfxi3s || maxD.hxi || stats.windGustMaxTime;
                     stats.windGustMaxDate = maxD.date;
                 }
                 const validFxi = Object.values(dailyOfficialMap).filter(d => d.fxi !== null && d.fxi > 0);
                 if (validFxi.length > 0) {
                     const maxF = validFxi.reduce((m, d) => d.fxi > m.fxi ? d : m, validFxi[0]);
                     stats.windFxiMax = Math.round(maxF.fxi);
-                    stats.windFxiMaxTime = stats.windFxiMaxTime || maxF.hxi;
-                    stats.windFxiMaxDate = maxF.date;
+                    stats.windFxiMaxTime = maxF.hfxi || maxF.hxi || stats.windFxiMaxTime;
+                    stats.windFxiDate = maxF.date;
                 }
             }
 
@@ -1237,11 +1232,15 @@ const CertificatMeteoManager = () => {
             setCustomSynthesis(autoSynthesis);
 
             const sName = stationNames[selectedStationId] || selectedStationId;
-            setStationMeteo(sName);
-            setStationMeteoTemp(sName);
-            setStationMeteoRain(sName);
-            setStationMeteoWind(sName);
-            setStatus('✅ Observations Météociel et certification FXI 3S DPClim chargées.');
+            const refText = resolvedRefStations?.refStationsText || sName;
+            setStationMeteo(refText);
+            setStationMeteoTemp(resolvedRefStations?.refStations?.temp?.name || sName);
+            setStationMeteoRain(resolvedRefStations?.refStations?.rain?.name || sName);
+            setStationMeteoWind(resolvedRefStations?.refStations?.wind ? `${resolvedRefStations.refStations.wind.name}${resolvedRefStations.windStation ? ` (${resolvedRefStations.windStation.distKm} km)` : ''}` : sName);
+            if (resolvedRefStations?.windStation) {
+                setShowDetailedStations(true);
+            }
+            setStatus(`✅ Données chargées avec succès (${refText}).`);
 
             refreshNearbyStations(startDate, finalEndDate);
 

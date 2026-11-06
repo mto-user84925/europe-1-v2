@@ -696,8 +696,10 @@ Voici les données brutes :`;
             // 1. Récupération préalable des indicateurs certifiés DPClim (FXI 3s OMM et horaire HXI)
             let dailyOfficialMap = {};
             let dpHourlyMap = new Map();
+            let resolvedRefStations = null;
             try {
                 const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
+                const { resolveReferenceStations } = await import('../../services/stationResolutionService');
                 const dailyRows = await meteoFranceClimService.fetchStationHistory(selectedStationId, startDate, endDate);
                 if (dailyRows && dailyRows.length > 0) {
                     dailyRows.forEach(d => {
@@ -718,40 +720,43 @@ Voici les données brutes :`;
                     console.warn("[BTP] DPClim horaire info:", eH);
                 }
 
-                // Si DOUAI (59178001), enrichir avec CAMBRAI-EPINOY (62298001) pour le vent (quotidien + horaire)
-                if (selectedStationId === '59178001') {
-                    try {
-                        const cambraiDaily = await meteoFranceClimService.fetchStationHistory('62298001', startDate, endDate);
-                        if (cambraiDaily && cambraiDaily.length > 0) {
-                            cambraiDaily.forEach(w => {
-                                const [y, m, day] = w.date.split('-');
-                                const dk = `${day}/${m}/${y}`;
-                                if (!dailyOfficialMap[dk]) {
-                                    dailyOfficialMap[dk] = { date: w.date };
-                                }
-                                dailyOfficialMap[dk].fxi3s = w.fxi3s;
-                                dailyOfficialMap[dk].fxi = w.fxi;
-                                dailyOfficialMap[dk].hxi = w.hxi;
-                                dailyOfficialMap[dk].dxi = w.dxi;
-                                dailyOfficialMap[dk].windStation = 'CAMBRAI-EPINOY (62298001)';
-                            });
+                // Résolution universelle automatique des postes de référence (si poste sans anémomètre, ex: Douai)
+                resolvedRefStations = await resolveReferenceStations({
+                    selectedStationId,
+                    startDate,
+                    endDate,
+                    dailyRows,
+                    onProgress: (msg) => setStatus('⏳ ' + msg)
+                });
+
+                if (resolvedRefStations.windStation && resolvedRefStations.windDailyRows) {
+                    resolvedRefStations.windDailyRows.forEach(w => {
+                        const [y, m, day] = w.date.split('-');
+                        const dk = `${day}/${m}/${y}`;
+                        if (!dailyOfficialMap[dk]) {
+                            dailyOfficialMap[dk] = { date: w.date };
                         }
-                        const cambraiHourly = await meteoFranceClimService.fetchStationHourlyHistory('62298001', startDate, endDate);
-                        if (cambraiHourly && cambraiHourly.length > 0) {
-                            cambraiHourly.forEach(ch => {
-                                const k = `${ch.date}_${ch.h}`;
-                                const existing = dpHourlyMap.get(k) || { date: ch.date, h: ch.h };
-                                existing.fxi3s = ch.fxi3s;
-                                existing.fxi = ch.fxi;
-                                existing.wind = ch.wind;
-                                existing.hfxi3s_time = ch.hfxi3s_time;
-                                existing.hfxi_time = ch.hfxi_time;
-                                existing.windStation = 'CAMBRAI-EPINOY (62298001)';
-                                dpHourlyMap.set(k, existing);
-                            });
-                        }
-                    } catch (eW) {
-                        console.warn("[BTP] Échec DPClim vent Cambrai:", eW);
+                        dailyOfficialMap[dk].fxi3s = w.fxi3s;
+                        dailyOfficialMap[dk].fxi = w.fxi;
+                        dailyOfficialMap[dk].hfxi3s = w.hfxi3s;
+                        dailyOfficialMap[dk].hfxi = w.hfxi;
+                        dailyOfficialMap[dk].hxi = w.hxi;
+                        dailyOfficialMap[dk].dxi = w.dxi;
+                        dailyOfficialMap[dk].windStation = `${resolvedRefStations.windStation.name} (${resolvedRefStations.windStation.id} - à ${resolvedRefStations.windStation.distKm} km)`;
+                    });
+
+                    if (resolvedRefStations.windHourlyRows && resolvedRefStations.windHourlyRows.length > 0) {
+                        resolvedRefStations.windHourlyRows.forEach(ch => {
+                            const k = `${ch.date}_${ch.h}`;
+                            const existing = dpHourlyMap.get(k) || { date: ch.date, h: ch.h };
+                            existing.fxi3s = ch.fxi3s;
+                            existing.fxi = ch.fxi;
+                            existing.wind = ch.wind;
+                            existing.hfxi3s_time = ch.hfxi3s_time;
+                            existing.hfxi_time = ch.hfxi_time;
+                            existing.windStation = `${resolvedRefStations.windStation.name} (${resolvedRefStations.windStation.id} - à ${resolvedRefStations.windStation.distKm} km)`;
+                            dpHourlyMap.set(k, existing);
+                        });
                     }
                 }
             } catch (eDaily) {
@@ -762,38 +767,40 @@ Voici les données brutes :`;
             setStatus('⏳ Récupération des relevés 6 minutes Météociel RADOME...');
             let history = await weatherAPI.getStation6mnHistoryRange(selectedStationId, startDate, endDate, (msg) => setStatus('⏳ ' + msg));
 
-            // Si Douai (59178001) ou station sans capteur de vent, récupérer les vents 6mn de Cambrai-Épinoy (62298001) et les synchroniser
-            if (selectedStationId === '59178001' && history && history.length > 0) {
+            // Si station sans capteur de vent, récupérer les vents 6mn du poste anémomètre le plus proche
+            if (resolvedRefStations?.windStation && history && history.length > 0) {
                 try {
-                    const cambrai6mn = await weatherAPI.getStation6mnHistoryRange('62298001', startDate, endDate);
-                    if (cambrai6mn && cambrai6mn.length > 0) {
-                        const cambraiMap = new Map();
-                        const cambraiHourlyMap = new Map();
-                        cambrai6mn.forEach(w => {
+                    const windStationId = resolvedRefStations.windStation.id;
+                    const wind6mn = await weatherAPI.getStation6mnHistoryRange(windStationId, startDate, endDate);
+                    if (wind6mn && wind6mn.length > 0) {
+                        const windMap = new Map();
+                        const windHourlyMap = new Map();
+                        wind6mn.forEach(w => {
                             const dt = w.time instanceof Date ? w.time : new Date(w.time);
                             const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
                             const kH = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}`;
-                            cambraiMap.set(k, w);
-                            if (!cambraiHourlyMap.has(kH) || (w.gust || 0) > (cambraiHourlyMap.get(kH)?.gust || 0)) {
-                                cambraiHourlyMap.set(kH, w);
+                            windMap.set(k, w);
+                            if (!windHourlyMap.has(kH) || (w.gust || 0) > (windHourlyMap.get(kH)?.gust || 0)) {
+                                windHourlyMap.set(kH, w);
                             }
                         });
                         history.forEach(h => {
                             const dt = h.time instanceof Date ? h.time : new Date(h.time);
                             const k = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}_${dt.getMinutes()}`;
                             const kH = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}_${dt.getHours()}`;
-                            const cMatch = cambraiMap.get(k) || cambraiHourlyMap.get(kH);
+                            const cMatch = windMap.get(k) || windHourlyMap.get(kH);
                             if (cMatch) {
                                 h.wind = cMatch.wind;
                                 h.gust = cMatch.gust;
-                                h.fxi3s = cMatch.fxi3s || cMatch.gust;
                                 h.fxi = cMatch.fxi || cMatch.gust;
+                                h.fxi3s = cMatch.fxi3s || null;
                                 h.hfxi3s_time = cMatch.hfxi3s_time;
+                                h.hfxi_time = cMatch.hfxi_time;
                             }
                         });
                     }
                 } catch (eC6) {
-                    console.warn("[BTP] Échec synchronisation 6mn vent Cambrai:", eC6);
+                    console.warn("[BTP] Échec synchronisation 6mn vent station déléguée:", eC6);
                 }
             }
 
@@ -882,8 +889,8 @@ Voici les données brutes :`;
                     rain: (obs.rain !== null && obs.rain !== undefined && !isNaN(obs.rain) && obs.rain >= 0 && obs.rain < 150) ? obs.rain : 0,
                     snow: 0,
                     w_avg: obs.wind !== null && obs.wind !== undefined ? Math.round(obs.wind) : 0,
-                    w_gst: Math.round(obs.fxi3s !== undefined && obs.fxi3s !== null ? obs.fxi3s : (obs.gust || 0)),
-                    w_fxi: Math.round(obs.fxi !== undefined && obs.fxi !== null ? obs.fxi : (obs.gust || 0)),
+                    w_gst: (obs.fxi3s !== undefined && obs.fxi3s !== null) ? Math.round(obs.fxi3s) : null,
+                    w_fxi: (obs.fxi !== undefined && obs.fxi !== null) ? Math.round(obs.fxi) : (obs.gust ? Math.round(obs.gust) : null),
                     humi: obs.hum,
                     vv: obs.vv
                 });
@@ -908,6 +915,8 @@ Voici les données brutes :`;
                     rows: processedRows,
                     officialFxi3s: off ? off.fxi3s : null,
                     officialFxi: off ? off.fxi : null,
+                    officialHfxi3s: off ? (off.hfxi3s || off.hxi) : null,
+                    officialHfxi: off ? (off.hfxi || off.hxi) : null,
                     officialHxi: off ? off.hxi : null,
                     windStation: off ? off.windStation : null,
                     dpHourly: Array.from(dpHourlyMap.entries())
@@ -924,16 +933,17 @@ Voici les données brutes :`;
                 setStatus('⚠️ Aucune donnée trouvée pour cette période/station.');
             } else {
                 // Préserver __metadata lors de l'écrasement de globalData
-                newGlobalData.__metadata = prevMetadata;
-                setGlobalData(newGlobalData);
                 const sNames = stationNames[selectedStationId] || selectedStationId;
-                if (selectedStationId === '59178001') {
-                    setStationMeteo(`${sNames} (${selectedStationId}) [Vent anémomètre : CAMBRAI-EPINOY (62298001)]`);
-                    setStatus(`✅ ${Object.keys(newGlobalData).length} jours importés avec succès (Douai sur site + Vents Cambrai-Épinoy).`);
-                } else {
-                    setStationMeteo(`${sNames} (${selectedStationId})`);
-                    setStatus(`✅ ${Object.keys(newGlobalData).length} jours importés avec succès.`);
-                }
+                const refText = resolvedRefStations?.refStationsText || sNames;
+                newGlobalData.__metadata = {
+                    ...prevMetadata,
+                    refStations: resolvedRefStations?.refStations,
+                    refStationsText: refText
+                };
+                setGlobalData(newGlobalData);
+                setStationMeteo(refText);
+                const dayCount = Object.keys(newGlobalData).filter(k => k !== '__metadata').length;
+                setStatus(`✅ ${dayCount} jours importés avec succès (${refText}).`);
             }
 
         } catch (e) {
@@ -1297,7 +1307,8 @@ Voici les données brutes :`;
                 const rs = rows.reduce((a, b) => a + ((b.rain && b.rain >= 0 && b.rain < 150) ? b.rain : 0), 0);
                 // ponytail: FXI 3S = strictement DPClim officiel (OMM). Si DPClim non dispo, afficher '--', ne JAMAIS dupliquer FXI
                 const syncFxi3s = dataObj.officialFxi3s != null ? Math.round(dataObj.officialFxi3s) : null;
-                const maxRowFxi = rows.length > 0 ? Math.round(Math.max(...rows.map(d => d.w_fxi || d.w_gst || 0))) : null;
+                const validRowFxi = rows.map(d => d.w_fxi).filter(v => v !== null && v !== undefined);
+                const maxRowFxi = validRowFxi.length > 0 ? Math.round(Math.max(...validRowFxi)) : null;
                 const syncFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : maxRowFxi;
                 totalRainPeriod += rs;
                 let dayIsKo = false;
@@ -1315,7 +1326,7 @@ Voici les données brutes :`;
                 <div style="font-size:11pt; color:#1e293b; font-weight:700; margin-top:5px;">
                     ${daysKO.size} jour(s) d'intempérie(s) identifié(s) sur ${totalDays} jour(s) analysé(s).
                 </div>
-                <div style="font-size:8pt; color:#64748b; margin-top:4px;">Station : ${stationMeteo}</div>
+                <div style="font-size:8pt; color:#64748b; margin-top:4px;">${globalData?.__metadata?.refStationsText || `Station : ${stationMeteo}`}</div>
             </div>
             </div>`;
             html += syncHtml;
@@ -1473,17 +1484,17 @@ Voici les données brutes :`;
             if (annexCols.windG) { 
                 // FXI 3S : valeur + horaire STRICTEMENT depuis DPClim (officiel OMM)
                 const fxi3sVal = dpFxi3s !== null ? Math.round(dpFxi3s) : null;
-                const fxi3sTime = dpFxi3s !== null ? (dpHxiFormatted || '') : '';
+                const fxi3sTime = dataObj.officialHfxi3s || dpHxiFormatted || '';
                 sumH += `<th style="${thStyle}">FXI 3s Max</th>`; 
                 sumR += `<td>${fxi3sVal !== null ? `${fxi3sVal} km/h` : '--'}${subBadge(fxi3sTime)}</td>`; 
             }
             if (annexCols.windFxi) { 
                 const dpFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : null;
                 const fxiVal = dpFxi !== null ? dpFxi : (fxiAll.length ? Math.round(Math.max(...fxiAll)) : 0);
-                // ponytail: horaire de Météociel en priorité pour FXI Max, et horaire DPClim pour FXI 3s Max
-                const fxiTime = hFxi || (dpFxi !== null ? (dataObj.officialHxi || '') : '');
+                // ponytail: horaire de Météociel ou DPClim HXI pour la rafale instantanée
+                const fxiTime = hFxi || dataObj.officialHfxi || (dpFxi !== null ? (dataObj.officialHxi || '') : '');
                 sumH += `<th style="${thStyle}">FXI Max</th>`; 
-                sumR += `<td>${fxiVal} km/h${subBadge(fxiTime)}</td>`; 
+                sumR += `<td>${fxiVal ? `${fxiVal} km/h` : '--'}${subBadge(fxiTime)}</td>`; 
             }
             if (annexCols.humi) { 
                 sumH += `<th style="${thStyle}">Hum. Max</th>`; 
@@ -1549,8 +1560,8 @@ Voici les données brutes :`;
                 if (dpH && dpH.fxi3s !== null && dpH.fxi3s !== undefined) {
                     wGst = Math.round(dpH.fxi3s);
                 } else if (sub.length > 0) {
-                    const rowGst = Math.max(0, ...sub.map(x => Number(x.w_gst) || 0));
-                    wGst = rowGst > 0 ? rowGst : null;
+                    const rowGsts = sub.map(x => x.w_gst).filter(v => v !== null && v !== undefined);
+                    wGst = rowGsts.length > 0 ? Math.max(...rowGsts) : null;
                 }
 
                 // FXI (rafale instantanée) : DPClim prioritaire
@@ -1558,8 +1569,8 @@ Voici les données brutes :`;
                 if (dpH && dpH.fxi !== null && dpH.fxi !== undefined) {
                     wFxi = Math.round(dpH.fxi);
                 } else if (sub.length > 0) {
-                    const rowFxi = Math.max(0, ...sub.map(x => Number(x.w_fxi || x.w_gst) || 0));
-                    wFxi = rowFxi > 0 ? rowFxi : null;
+                    const rowFxis = sub.map(x => x.w_fxi).filter(v => v !== null && v !== undefined);
+                    wFxi = rowFxis.length > 0 ? Math.max(...rowFxis) : null;
                 }
 
                 const humValid = sub.filter(x => x.humi !== null && x.humi !== undefined && !isNaN(x.humi));

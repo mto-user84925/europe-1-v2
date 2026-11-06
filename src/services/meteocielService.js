@@ -236,9 +236,9 @@ export const parseStationObservations = (html) => {
             dewpoint: getCellVal(4),
             ff: windAvg,              // Vent moyen km/h
             wind: windAvg,
-            fxi: windGust,            // Rafale max km/h
+            fxi: windGust,            // Rafale max km/h (Météociel)
             gust: windGust,
-            fxi3s: windGust,
+            fxi3s: null,              // ponytail: FXI 3S OMM réservé exclusivement aux relevés certifiés DPClim
             pres: pres,               // Pression hPa
             rr: rain,                 // Précipitations mm
             rain: rain

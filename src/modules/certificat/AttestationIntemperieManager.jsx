@@ -220,71 +220,57 @@ const AttestationIntemperieManager = () => {
         }
     }, [globalData, limitRain, limitTemp, limitWind, limitTempMax, excludeWeekends, showPersonalization, stationMeteo, stationMeteoTemp, stationMeteoRain, stationMeteoWind]);
 
-    // --- Calcul stations proches ---
+    // --- Calcul stations proches (immédiat et multi-plateforme) ---
     useEffect(() => {
-        const timer = setTimeout(() => {
-            if (clientCity && globalData) {
-                const finalEndDate = isPeriod ? endDate : startDate;
-                refreshNearbyStations(startDate, finalEndDate);
-            }
-        }, 1000);
-        return () => clearTimeout(timer);
+        if ((clientCity || selectedStationId) && globalData) {
+            const finalEndDate = isPeriod ? endDate : startDate;
+            refreshNearbyStations(startDate, finalEndDate);
+        }
     }, [clientCity, selectedStationId, startDate, endDate, isPeriod]);
 
     const refreshNearbyStations = async (start, end) => {
-        if (!clientCity) return;
+        if (!clientCity && !selectedStationId) return;
         try {
-            const cityResults = await weatherAPI.searchCity(clientCity);
-            if (!cityResults || cityResults.length === 0) return;
+            let cityLat = null;
+            let cityLon = null;
 
-            const cityLat = cityResults[0].lat;
-            const cityLon = cityResults[0].lon;
-
-            // Calcul distances : Essai RPC Supabase puis Fallback 100% autonome local
-            let dists = null;
-            if (supabase) {
+            if (clientCity) {
                 try {
-                    const { data, error } = await supabase.rpc('find_nearest_stations', {
-                        lat_input: cityLat,
-                        lon_input: cityLon,
-                        limit_count: 10
-                    });
-                    if (!error && data && data.length > 0) dists = data;
-                } catch (e) { }
-            }
-
-            if (!dists || dists.length === 0) {
-                try {
-                    const stationsData = await import('../../data/stations_list.json');
-                    const list = stationsData.default?.features || stationsData.features || [];
-                    const R = 6371;
-                    dists = list.map(f => {
-                        const [lonS, latS] = f.geometry.coordinates;
-                        const dLat = (latS - cityLat) * Math.PI / 180;
-                        const dLon = (lonS - cityLon) * Math.PI / 180;
-                        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                            Math.cos(cityLat * Math.PI / 180) * Math.cos(latS * Math.PI / 180) *
-                            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                        const dKm = Math.round(R * c * 10) / 10;
-                        return { id: f.properties.num, name: f.properties.nom, dist_km: dKm };
-                    }).sort((a, b) => a.dist_km - b.dist_km).slice(0, 10);
-                } catch (e) {
-                    console.error("Erreur calcul stations proches local:", e);
+                    const cityResults = await weatherAPI.searchCity(clientCity);
+                    if (cityResults && cityResults.length > 0) {
+                        cityLat = cityResults[0].lat;
+                        cityLon = cityResults[0].lon;
+                    }
+                } catch (eC) {
+                    console.warn("[Attestation] Recherche gouv ville échouée:", eC);
                 }
             }
 
+            // Fallback direct sur les coordonnées de la station sélectionnée
+            const { getStationCoords, findNearestStations } = await import('../../services/stationResolutionService');
+            if (cityLat == null || cityLon == null) {
+                const sCoords = getStationCoords(selectedStationId);
+                if (sCoords) {
+                    cityLat = sCoords.lat;
+                    cityLon = sCoords.lon;
+                }
+            }
+
+            if (cityLat == null || cityLon == null) return;
+
+            // Calcul 100% autonome et immédiat (<1ms) des stations les plus proches
+            const dists = findNearestStations(cityLat, cityLon, null, 15);
             if (!dists || dists.length === 0) return;
 
             const currentStation = dists.find(s => s.id === selectedStationId);
-            if (currentStation) setSelectedStationDist(currentStation.dist_km);
+            if (currentStation) setSelectedStationDist(currentStation.distKm);
 
             const candidates = dists.filter(s => s.id !== selectedStationId).slice(0, 4);
 
             const enriched = candidates.map(s => ({
                 id: s.id,
                 name: s.name,
-                dist: s.dist_km,
+                dist: s.distKm,
                 stats: { maxGust: '-', rainTotal: '-', tmin: '-', tmax: '-' }
             }));
 
@@ -975,12 +961,14 @@ const AttestationIntemperieManager = () => {
                 };
             });
 
-            // Override FXI 3S MAX + horaire avec DPClim officiel OMM (hxi déjà en heure locale "HHhMM")
+            // Override FXI 3S MAX + FXI MAX avec DPClim officiel OMM (horaires déjà en heure locale "HHhMM")
             allDateKeys.forEach(dateKey => {
                 const dpDay = stationDailyOfficials[stWind]?.[dateKey];
                 if (dpDay && combinedDays[dateKey]) {
                     if (dpDay.fxi3s != null) combinedDays[dateKey].stats.gustMax = Math.round(dpDay.fxi3s);
-                    if (dpDay.hxi) combinedDays[dateKey].stats.gustTime = dpDay.hxi;
+                    if (dpDay.hfxi3s || dpDay.hxi) combinedDays[dateKey].stats.gustTime = dpDay.hfxi3s || dpDay.hxi;
+                    if (dpDay.fxi != null) combinedDays[dateKey].stats.fxiMax = Math.round(dpDay.fxi);
+                    if (dpDay.hfxi || dpDay.hxi) combinedDays[dateKey].stats.fxiTime = dpDay.hfxi || dpDay.hxi;
                 }
             });
 

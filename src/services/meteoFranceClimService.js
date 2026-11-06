@@ -374,7 +374,9 @@ export const meteoFranceClimService = {
             const fxi3sKmh = fxi3sMS !== null ? Math.round(fxi3sMS * 3.6) : null;
             const fxiMS = parseVal(idxFXI);
             const fxiRawKmh = fxiMS !== null ? Math.round(fxiMS * 3.6) : null;
-            const hxi = parseHour(idxHXI3S) || parseHour(idxHXI);
+            const hfxi3s = parseHour(idxHXI3S);
+            const hfxi = parseHour(idxHXI);
+            const hxi = hfxi3s || hfxi;
             const dxi = parseVal(idxDXI3S) ?? parseVal(idxDXI);
 
             results.push({
@@ -390,6 +392,8 @@ export const meteoFranceClimService = {
                 rr: rr,
                 fxi: fxiRawKmh,
                 fxi3s: fxi3sKmh,
+                hfxi: hfxi,
+                hfxi3s: hfxi3s,
                 fxiMS: fxiMS ?? fxi3sMS,
                 fxiPeakKmh: fxiRawKmh,
                 gust: fxi3sKmh ?? fxiRawKmh,
