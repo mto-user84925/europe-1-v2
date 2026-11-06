@@ -12,6 +12,7 @@ Générateur Automatique Quotidien des Bulletins Météo France & Hauts-de-Franc
 
 import os
 import sys
+import time
 import shutil
 import argparse
 import subprocess
@@ -338,6 +339,7 @@ def main():
                 else:
                     script_btp = SCRIPT_BTP
             generate_bulletin_pair("btp", script_btp, output_dir, maps_dir, music_path, api_key, zone=z)
+        time.sleep(2.0)  # ponytail: pause inter-zones pour réguler la cadence OpenRouter API
 
 if __name__ == "__main__":
     main()

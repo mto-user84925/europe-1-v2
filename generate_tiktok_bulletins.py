@@ -20,6 +20,8 @@ import shutil
 import argparse
 import subprocess
 import urllib.request
+import urllib.error
+import time
 import re
 import io
 import base64
@@ -828,49 +830,62 @@ def clean_for_speech(text):
     return t.strip()
 
 def tts_charon(text, output_wav, api_key):
-    """Synthèse vocale Gemini 3.8 Flash-Lite TTS (voix Charon) avec fallback transparent Edge-TTS (Henri)"""
+    """Synthèse vocale Gemini TTS (voix Charon) avec retry 429 et fallback transparent Edge-TTS (Henri)"""
     clean_text = clean_for_speech(text)
 
-    # 1. Tentative OpenRouter Gemini Charon TTS
+    # 1. Tentative OpenRouter Gemini Charon TTS (avec retry sur 429 et bascule de modèle)
     if api_key:
-        try:
-            url = "https://openrouter.ai/api/v1/audio/speech"
-            payload = {
-                "model": "google/gemini-3.8-flash-tts",
-                "input": clean_text,
-                "voice": "Charon",
-                "language": "fr-FR",
-                "instructions": (
-                    "The speaker is an experienced, authoritative French television weather presenter and meteorologist for a major national news channel. "
-                    "He speaks standard metropolitan Parisian French with crisp European French articulation, warm authority, and a dynamic, fluid, natural broadcast TV delivery. "
-                    "Diction is energetic, clear, engaging, and professional, without long pauses or hesitation between sentences. "
-                    "Every city and regional name is articulated with precision. "
-                    "Never pronounce 'celsius', always say 'degrés'."
-                )
-            }
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://meteoclimatpro.fr",
-                    "X-Title": "Meteo Climat Pro",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=35) as resp:
-                pcm = resp.read()
+        models_to_try = ["google/gemini-3.8-flash-lite-tts", "google/gemini-3.8-flash-tts"]
+        for model in models_to_try:
+            for attempt in range(3):
+                try:
+                    url = "https://openrouter.ai/api/v1/audio/speech"
+                    payload = {
+                        "model": model,
+                        "input": clean_text,
+                        "voice": "Charon",
+                        "language": "fr-FR",
+                        "instructions": (
+                            "The speaker is a native French television news anchor from Paris, France. "
+                            "He speaks standard metropolitan Parisian French with impeccable French phonetics, "
+                            "crisp European French articulation, non-rhotic R, and zero American or English accent. "
+                            "Fast, dynamic, broadcast TV news delivery. "
+                            "Never pronounce 'celsius', always say 'degrés'."
+                        )
+                    }
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": "https://meteoclimatpro.fr",
+                            "X-Title": "Meteo Climat Pro",
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                        }
+                    )
+                    with urllib.request.urlopen(req, timeout=35) as resp:
+                        pcm = resp.read()
 
-            with wave.open(output_wav, "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(24000)
-                wf.writeframes(pcm)
-            log("🎙️ ✅ Synthèse vocale Gemini 3.8 Flash-Lite TTS (voix Charon) générée via OpenRouter !")
-            return
-        except Exception as e:
-            log(f"⚠️ OpenRouter TTS ({e}) -> Bascule sur Edge-TTS (Henri)...")
+                    with wave.open(output_wav, "wb") as wf:
+                        wf.setnchannels(1)
+                        wf.setsampwidth(2)
+                        wf.setframerate(24000)
+                        wf.writeframes(pcm)
+                    log(f"🎙️ ✅ Synthèse vocale Gemini TTS (voix Charon via {model}) générée !")
+                    return
+                except urllib.error.HTTPError as he:
+                    if he.code == 429:
+                        wait_sec = (attempt + 1) * 3
+                        log(f"⏳ OpenRouter 429 (Too Many Requests), attente {wait_sec}s avant tentative {attempt + 2}/3 ({model})...")
+                        time.sleep(wait_sec)
+                    else:
+                        log(f"⚠️ OpenRouter TTS HTTP {he.code} sur {model} : {he}")
+                        break
+                except Exception as e:
+                    log(f"⚠️ OpenRouter TTS ({e}) sur {model} (tentative {attempt + 1}/3)...")
+                    time.sleep(2)
+        log("⚠️ Échec OpenRouter Charon sur tous les modèles -> Bascule sur Edge-TTS (Henri)...")
 
     # 2. Fallback robuste 100% gratuit / Zero-Token / Zero-Quota via edge-tts (HenriNeural)
     try:
@@ -916,6 +931,7 @@ def compile_video(zone, cards, script_phrases, output_path, music_path, api_key,
         text = script_phrases[i]
 
         tts_charon(text, raw_wav, api_key)
+        time.sleep(1.0)  # ponytail: cadence 1s pour préserver les quotas RPM OpenRouter
 
         cmd_norm = [
             "ffmpeg", "-y", "-i", raw_wav,
