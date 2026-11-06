@@ -501,13 +501,6 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
                 ["Chartres", "Châteaudun", "Dreux", "Nogent-le-Rotrou"],
                 ["Bourges", "Saint-Amand-Montrond", "Châteauroux", "Sancerre"]
             ]
-        elif zone in ("grand-est", "grandest"):
-            regional_pools = [
-                ["Strasbourg", "Mulhouse", "Colmar", "Wissembourg"],
-                ["Metz", "Nancy", "Épinal", "Thionville", "Longwy"],
-                ["Reims", "Troyes", "Châlons-en-Champagne", "Charleville-Mézières"],
-                ["Saint-Dizier", "Bar-le-Duc", "Verdun", "Chaumont", "Langres"]
-            ]
         else:
             regional_pools = [
                 ["Dunkerque", "Calais", "Boulogne-sur-Mer", "Berck"],
@@ -564,17 +557,9 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
                     p_info = exact.get("PARIS") or exact.get("Paris")
                     if p_info:
                         other_reps.append(f"PARIS ({p_info['temp']} degrés, {p_info['label'].lower()})")
-                elif zone in ("grand-est", "grandest"):
-                    s_info = exact.get("Strasbourg") or exact.get("STRASBOURG")
-                    if s_info:
-                        other_reps.append(f"STRASBOURG ({s_info['temp']} degrés, {s_info['label'].lower()})")
-                elif zone == "hdf":
-                    l_info = exact.get("Lille") or exact.get("LILLE")
-                    if l_info:
-                        other_reps.append(f"LILLE ({l_info['temp']} degrés, {l_info['label'].lower()})")
                 pool = regional_pools[card_num % len(regional_pools)]
                 for c in pool:
-                    if c in exact and c not in ["Blois", "PARIS", "Paris", "Strasbourg", "STRASBOURG", "Lille", "LILLE"]:
+                    if c in exact and c not in ["Blois", "PARIS", "Paris"]:
                         other_reps.append(f"{c} ({exact[c]['temp']} degrés, {exact[c]['label'].lower()})")
                 other_str = f" | Autres repères : {', '.join(other_reps[:4])}" if other_reps else ""
 
@@ -627,11 +612,13 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
         specific_rules = """5. MODE VISIO & RESPECT STRICT DU CONTRASTE SPATIAL (RÈGLE INVIOLABLE) :
    - Tu disposes DIRECTEMENT de l'image de chaque carte météo haute définition transmise dans ce prompt. OBSERVE-LA ATTENTIVEMENT !
-   - Mentionne expressément la nuance géographique (ex: "un temps très nuageux mais sec sur la région avec tout au plus une ondée très isolée").
+   - Si la carte ou la fiche technique indique un contraste ou un phénomène marginal (ex: 20 villes sous les nuages ou le soleil et 1 seule sous une ondée comme Le Grand-Pressigny ou Le Blanc), INTERDICTION FORMELLE de dire qu'il pleut partout ou sur la région !
+   - Mentionne expressément la nuance géographique (ex: "un temps très nuageux mais sec sur la région et à Blois, avec tout au plus une ondée très isolée vers Le Grand-Pressigny").
    - Adapte le conseil BTP : autorise les travaux extérieurs et coulages sur les secteurs secs, et réserve la vigilance aux seules zones arrosées.
-6. PRÉCISION MÉTÉO COMPLÈTE POUR LE CHANTIER :
-   - Pour CHAQUE jour, détaille le ciel, les précipitations (ou maintien du temps sec), le vent/rafales arrondis aux 5 km/h, et les températures réelles (au moins 2 villes).
-   - Relie ces conditions météo concrètes aux plannings : séchage des dalles, terrassement, travail sur toiture, maintien ou arrêt des grues."""
+6. PRÉCISION VENT ET RAFALES BTP :
+   - Les rafales DOIVENT TOUJOURS être citées au multiple de 5 le plus proche (ex: 45, 50, 55, 60, 65, 70, 75 km/h). Utilise STRICTEMENT la valeur arrondie indiquée sous chaque carte !
+7. CONSEILS MÉTIERS BTP :
+   - Relie les conditions météo aux chantiers : coulage béton, séchage, terrassement, étanchéité, hydratation des ouvriers si forte chaleur, arrêt des grues et sécurisation des échafaudages."""
     else:
         persona = "Tu es un présentateur météorologue officiel pour Météo-Climat Pro."
         audience = f"le bulletin météo national grand public officiel, destiné aux téléspectateurs pour la météo au quotidien, les activités extérieures et les prévisions de la semaine pour {zone_title}."
@@ -645,13 +632,9 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo du Grand Est. On commence {start_phrase_cue}, avec..."'
         else:
             intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo de {zone_title}. On commence {start_phrase_cue}, avec..."'
-        specific_rules = """5. DESCRIPTION MÉTÉOROLOGIQUE PRÉCISE ET DÉTAILLÉE DE CHAQUE JOUR (RÈGLE ABSOLUE) :
-   - Pour CHAQUE CARTE 1 à 8, tu DOIS obligatoirement donner une véritable description météorologique complète :
-     * Le ciel & la nébulosité : précise l'évolution (brumes ou brouillards matinaux qui se dissipent, ciel limpide, passages nuageux inoffensifs, voile d'altitude ou cumulus menaçants).
-     * Les précipitations : précise explicitement si le temps reste parfaitement sec, ou s'il faut surveiller des averses éparses, des pluies continues ou des giboulées.
-     * Le vent et le ressenti thermique : signale le vent (calme, brise sensible ou rafales marquées) et le ressenti (fraîcheur matinale vivifiante, douceur remarquable ou chaleur lourde).
-     * Les repères géographiques : cite au moins 2 ou 3 villes réelles issues de la fiche technique avec leurs températures pour illustrer les contrastes thermiques (ex: plaine vs relief, ou nord vs sud).
-   - Bannis totalement les formules creuses ou génériques comme "temps calme et agréable" sans expliciter les conditions météo."""
+        specific_rules = """5. CONSEILS GRAND PUBLIC & SORTIES :
+   - Décris l'ambiance météo de manière vivante (soleil, éclaircies, parapluie nécessaire ou non, ressenti doux ou frais).
+   - Donne des conseils pour les sorties, activités de plein air et le week-end."""
         phrase_9_desc = "Synthèse générale de la semaine, éphéméride, et mot de conclusion chaleureux signé Météo-Climat Pro."
 
     prompt_text = f"""{persona}
@@ -673,10 +656,9 @@ EXIGENCES ÉDITORIALES DE HAUTE PRÉCISION :
 4. BAN ABSOLU DU MOT 'CELSIUS' (RÈGLE INVIOLABLE) :
    - Ne dis JAMAIS "degrés Celsius" ni "Celsius" ! Dis uniquement "degrés" ou le chiffre brut (ex: "6 degrés", "25 degrés"). N'écris jamais le symbole °C.
 {specific_rules}
-7. LONGUEUR PAR PHRASE & RYTHME DU BULLETIN :
-   - Pour les cartes 1 à 8, chaque phrase doit faire entre 28 et 38 mots afin de détailler précisément la météo du jour (ciel, pluie/temps sec, vent, températures de 2 à 3 villes repères).
-   - La Phrase 9 (Éphéméride & conclusion) doit faire entre 20 et 26 mots.
-   - Diction dynamique, naturelle, percutante et professionnelle. N'utilise aucun placeholder entre crochets ni abréviation.
+7. LONGUEUR PAR PHRASE & CONTRAINTE STRICTE DE DURÉE (1 MINUTE 30 MAXIMUM) :
+   - RÈGLE ABSOLUE : Le bulletin complet (les {len(cards)} phrases cumulées) DOIT IMPÉRATIVEMENT DURER MOINS DE 1 MINUTE 30 (90 secondes au total) !
+   - Pour respecter cette durée, chaque phrase doit faire STRICTEMENT entre 16 et 22 mots (JAMAIS plus de 24 mots par phrase !). Diction dynamique, naturelle, concise et percutante. N'utilise aucun placeholder entre crochets.
 
 Structure des {len(cards)} phrases dans l'ordre EXACT :
 - Phrase 1 (CARTE 1 : Matin)

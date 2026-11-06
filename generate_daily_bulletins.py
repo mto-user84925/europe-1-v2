@@ -28,177 +28,177 @@ from generate_tiktok_bulletins import (
 )
 
 SCRIPT_GRAND_PUBLIC = [
-    # CARTE 1 : J1 Matin
-    "Bonjour à tous, voici votre météo nationale. Ce matin, réveil calme sous un ciel généralement lumineux, après dissipation des quelques brumes matinales dans les plaines intérieures et une fraîcheur bien de saison.",
+    # CARTE 1 : J1 Matin (18 mots)
+    "Bonjour à tous, voici votre météo nationale. Ce matin, réveil calme et agréable sous de belles éclaircies généralisées.",
     
-    # CARTE 2 : J1 Après-midi
-    "Pour votre après-midi, de très belles éclaircies s'imposent d'est en ouest dans une atmosphère douce et parfaitement sèche, malgré quelques passages nuageux décoratifs près des reliefs et le long des côtes.",
+    # CARTE 2 : J1 Après-midi (19 mots)
+    "Pour votre après-midi, le soleil s'impose largement sur la quasi-totalité du pays avec une douceur idéale pour vos sorties.",
     
-    # CARTE 3 : J2
-    "Le lendemain, maintien de conditions très calmes et ensoleillées sur la quasi-totalité du pays, avec tout au plus un léger voile nuageux d'altitude et un mercure restant très agréable pour vos sorties.",
+    # CARTE 3 : J2 (18 mots)
+    "Le lendemain, maintien de conditions clémentes et très lumineuses sur la plupart de nos régions d'est en ouest.",
     
-    # CARTE 4 : J3
-    "Le surlendemain, un ciel plus mitigé s'installera par le nord-ouest avec un vent sensible et quelques ondées éparses, tandis que la moitié sud conservera un temps sec, lumineux et doux.",
+    # CARTE 4 : J3 (19 mots)
+    "Le surlendemain, quelques ondées locales glisseront le long de la façade atlantique sans altérer la grande douceur générale.",
     
-    # CARTE 5 : J4
-    "Pour la suite, retour de belles plages ensoleillées après la dissipation des grisailles matinales, accompagnées de températures printanières très confortables et d'un vent devenant très discret sur l'ensemble des départements.",
+    # CARTE 5 : J4 (18 mots)
+    "Pour la suite, le soleil reprendra l'avantage dans une atmosphère très agréable et bien conforme aux normales saisonnières.",
     
-    # CARTE 6 : J5
-    "Le temps deviendra ensuite plus changeant avec une alternance de passages nuageux denses et d'éclaircies passagères, pouvant lâcher de rares averses locales sous des températures restant stables et de saison.",
+    # CARTE 6 : J5 (18 mots)
+    "Le temps deviendra ensuite plus changeant avec de rares averses passagères et des températures restant très douces.",
     
-    # CARTE 7 : J6
-    "En fin d'échéance, un ciel plus partagé alternera entre nuages et belles périodes de soleil, tandis que le pourtour méditerranéen conservera un franc soleil avec une atmosphère encore très douce.",
+    # CARTE 7 : J6 (18 mots)
+    "En fin d'échéance, un ciel partagé alternera entre nuages et belles éclaircies avec un mercure toujours de saison.",
     
-    # CARTE 8 : J7
-    "Dernière journée de prévision sous un temps stable, calme et largement ensoleillé grâce à des pressions bien orientées, idéal pour profiter pleinement de toutes vos activités de plein air.",
+    # CARTE 8 : J7 (18 mots)
+    "Dernière journée de prévision avec le retour d'un temps stable, calme et lumineux sur une large majorité du territoire.",
     
-    # CARTE 9 : Éphéméride & Synthèse
-    "Profitez de ces belles journées ensoleillées au fil de la semaine. Très bonne journée à tous avec Météo-Climat Pro !"
+    # CARTE 9 : Éphéméride & Synthèse (16 mots)
+    "Profitez pleinement de cette météo agréable au fil des jours. À très vite avec Météo-Climat Pro !"
 ]
 
 SCRIPT_BTP = [
-    # CARTE 1 : J1 Matin
-    "Voici votre bulletin météo BTP. Ce matin, conditions sèches idéales pour le démarrage de vos chantiers extérieurs, avec une bonne visibilité après la levée des quelques brumes matinales et un vent très faible.",
+    # CARTE 1 : J1 Matin (18 mots)
+    "Voici votre bulletin météo BTP. Ce matin, conditions très calmes idéales pour le démarrage de vos chantiers extérieurs.",
     
-    # CARTE 2 : J1 Après-midi
-    "Pour l'après-midi, un temps sec et lumineux s'impose sur les chantiers, particulièrement favorable au séchage des dalles, au terrassement et à l'avancement régulier de tous vos travaux de gros œuvre.",
+    # CARTE 2 : J1 Après-midi (17 mots)
+    "Pour l'après-midi, le soleil domine largement, parfait pour le terrassement et l'avancement de vos travaux extérieurs.",
     
-    # CARTE 3 : J2
-    "Le lendemain, poursuite d'un temps calme et sec sur l'ensemble du territoire, permettant de sécuriser toutes vos opérations extérieures, le coulage du béton et le levage sans contrainte de vent.",
+    # CARTE 3 : J2 (17 mots)
+    "Le lendemain, maintien d'un temps sec et lumineux permettant de sécuriser toutes vos installations en plein air.",
     
-    # CARTE 4 : J3
-    "Le surlendemain, arrivée d'un ciel plus couvert par l'ouest avec quelques ondées éparses : surveillez la prise au vent sur les échafaudages côtiers et l'adhérence des engins de terrassement sur piste.",
+    # CARTE 4 : J3 (18 mots)
+    "Le surlendemain, quelques ondées par l'ouest : surveillez l'adhérence des engins de chantier et les sols glissants.",
     
-    # CARTE 5 : J4
-    "Pour la suite, retour de conditions parfaitement stables et sèches sur la grande majorité des chantiers, très propices à la cadence normale de vos plannings de maçonnerie et d'étanchéité.",
+    # CARTE 5 : J4 (17 mots)
+    "Pour la suite, retour de belles éclaircies stables, très propices à la poursuite sereine de vos plannings.",
     
-    # CARTE 6 : J5
-    "Ciel plus incertain avec quelques averses possibles : pensez à bâcher vos zones de stockage et matériaux sensibles à l'humidité, tout en maintenant les activités sous abri ou en extérieur sec.",
+    # CARTE 6 : J5 (18 mots)
+    "Ciel plus chargé par endroits : protégez vos matériaux sensibles à l'humidité contre d'éventuelles averses locales.",
     
-    # CARTE 7 : J6
-    "Conditions plus fraîches sous un ciel partagé : vérifiez systématiquement l'amarrage de vos grues et structures légères, avec un thermomètre restant propice à la bonne prise des mortiers.",
+    # CARTE 7 : J6 (17 mots)
+    "Atmosphère plus fraîche et vent modéré : vérifiez systématiquement l'amarrage de vos échafaudages et la grue.",
     
-    # CARTE 8 : J7
-    "Fin d'échéance calme et propice à la finalisation sereine de vos travaux en cours, avec un temps sec et une visibilité parfaite sur l'ensemble de vos chantiers nationaux.",
+    # CARTE 8 : J7 (18 mots)
+    "Fin d'échéance calme et propice à la finalisation de vos travaux en cours sur l'ensemble des chantiers.",
     
-    # CARTE 9 : Synthèse
-    "Restez vigilants sur l'évolution du vent et les accès chantiers. Excellente semaine à toutes vos équipes avec Météo BTP !"
+    # CARTE 9 : Synthèse (17 mots)
+    "Restez vigilants sur l'évolution du vent. Très bonne semaine à vos équipes avec Météo BTP !"
 ]
 
 SCRIPT_HDF_GRAND_PUBLIC = [
-    # CARTE 1 : J1 Matin
-    "Bonjour à tous, bienvenue pour votre météo des Hauts-de-France. Ce matin, réveil calme sous un ciel lumineux, après dissipation des brumes côtières sur le littoral et une agréable fraîcheur de saison.",
+    # CARTE 1 : J1 Matin (19 mots)
+    "Bonjour à tous, bienvenue pour votre météo des Hauts-de-France. Ce matin, réveil calme et lumineux sur l'ensemble de notre région.",
     
-    # CARTE 2 : J1 Après-midi
-    "Pour votre après-midi, de très belles éclaircies s'imposent de la Côte d'Opale jusqu'à l'Aisne dans une atmosphère douce et parfaitement sèche, malgré quelques cumulus décoratifs sans conséquence sur le bassin minier.",
+    # CARTE 2 : J1 Après-midi (20 mots)
+    "Pour votre après-midi, de très belles éclaircies s'imposent de la Côte d'Opale jusqu'à l'Aisne dans une atmosphère très agréable.",
     
-    # CARTE 3 : J2
-    "Le lendemain, maintien de conditions clémentes et très lumineuses sur l'ensemble du Nord et de la Picardie, avec un thermomètre stationnaire et idéal pour vos activités et sorties extérieures.",
+    # CARTE 3 : J2 (18 mots)
+    "Le lendemain, maintien de conditions clémentes et ensoleillées sur l'ensemble des départements du Nord et de la Picardie.",
     
-    # CARTE 4 : J3
-    "Le surlendemain, le ciel se voilera légèrement par le littoral avec quelques nuages inoffensifs et un vent modéré en bord de mer, sans conséquence sur la grande douceur générale de la région.",
+    # CARTE 4 : J3 (19 mots)
+    "Le surlendemain, le ciel se voilera légèrement par le littoral avec quelques nuages sans conséquence sur la douceur ambiante.",
     
-    # CARTE 5 : J4
-    "Pour la suite, retour de larges plages ensoleillées entre Flandres, Artois et plaines picardes, avec un ressenti très agréable et des températures bien conformes aux normales saisonnières.",
+    # CARTE 5 : J4 (18 mots)
+    "Pour la suite, retour de belles plages ensoleillées entre Flandres, Artois et bassin picard avec des températures de saison.",
     
-    # CARTE 6 : J5
-    "Le temps deviendra ensuite plus mitigé avec une alternance de passages nuageux et d'éclaircies passagères pouvant lâcher une rare ondée, sous un mercure restant très stable sur l'ensemble des départements.",
+    # CARTE 6 : J5 (18 mots)
+    "Le temps deviendra ensuite plus mitigé avec une alternance de passages nuageux et d'éclaircies passagères sur la région.",
     
-    # CARTE 7 : J6
-    "En fin d'échéance, un ciel partagé alternera entre nuages et belles périodes de soleil, avec un thermomètre restant doux et agréable de Dunkerque jusqu'au sud de l'Oise.",
+    # CARTE 7 : J6 (17 mots)
+    "En fin d'échéance, un temps variable persistera avec un thermomètre restant stationnaire et agréable pour la saison.",
     
-    # CARTE 8 : J7
-    "Dernière journée de prévision sous un ciel bien dégagé et calme sur la quasi-totalité des Hauts-de-France, grâce au retour de conditions anticycloniques protectrices et durables.",
+    # CARTE 8 : J7 (17 mots)
+    "Dernière journée de prévision sous un ciel bien dégagé et calme sur la quasi-totalité des Hauts-de-France.",
     
-    # CARTE 9 : Éphéméride & Synthèse
-    "Profitez pleinement de ces belles journées lumineuses dans notre région. À très vite avec Météo-Climat Pro !"
+    # CARTE 9 : Éphéméride & Synthèse (16 mots)
+    "Profitez pleinement de ces belles journées dans notre région. À très vite avec Météo-Climat Pro !"
 ]
 
 SCRIPT_HDF_BTP = [
-    # CARTE 1 : J1 Matin
-    "Voici votre bulletin météo BTP pour les Hauts-de-France. Ce matin, conditions sèches et favorables au démarrage des chantiers, après dissipation rapide des brumes côtières et un vent restant très modéré.",
+    # CARTE 1 : J1 Matin (18 mots)
+    "Voici votre bulletin météo BTP pour les Hauts-de-France. Ce matin, conditions sèches et favorables au démarrage des chantiers.",
     
-    # CARTE 2 : J1 Après-midi
-    "Pour l'après-midi, un temps sec et lumineux s'installe, parfait pour le coulage béton, les travaux de voirie et le terrassement de la métropole lilloise jusqu'au sud de la Picardie.",
+    # CARTE 2 : J1 Après-midi (19 mots)
+    "Pour l'après-midi, temps très calme et lumineux, idéal pour les travaux de gros œuvre et de voirie dans toute la région.",
     
-    # CARTE 3 : J2
-    "Le lendemain, maintien d'un temps sec sur le Nord et la Picardie pour poursuivre vos opérations extérieures en toute sérénité, sans perturbation du rythme de vos livraisons et de vos plannings.",
+    # CARTE 3 : J2 (18 mots)
+    "Le lendemain, maintien d'un temps sec sur le Nord et la Picardie pour poursuivre vos opérations extérieures en toute sérénité.",
     
-    # CARTE 4 : J3
-    "Le surlendemain, vent modéré en bord de mer et ciel plus voilé : surveillez la prise au vent sur les échafaudages côtiers et sécurisez vos éléments légers sur le littoral de la Côte d'Opale.",
+    # CARTE 4 : J3 (18 mots)
+    "Le surlendemain, vent modéré en bord de mer et ciel plus voilé : surveillez la prise au vent sur les échafaudages côtiers.",
     
-    # CARTE 5 : J4
-    "Pour la suite, de belles fenêtres météo stables permettent de cadencer vos chantiers de gros œuvre et de toiture sous un ciel lumineux et un mercure favorable aux finitions.",
+    # CARTE 5 : J4 (17 mots)
+    "Pour la suite, de belles fenêtres d'éclaircies stables permettent de cadencer vos plannings de terrassement.",
     
-    # CARTE 6 : J5
-    "Ciel plus incertain avec quelques ondées éparses : protégez vos zones de stockage et matériaux sensibles à l'humidité, et veillez à l'adhérence des pistes d'accès aux chantiers.",
+    # CARTE 6 : J5 (18 mots)
+    "Ciel plus incertain avec quelques ondées éparses : protégez vos zones de stockage et matériaux sensibles à l'humidité.",
     
-    # CARTE 7 : J6
-    "Conditions plus fraîches avec de rares averses résiduelles : vérifiez systématiquement l'amarrage des échafaudages et le bon fonctionnement des engins de levage sous ce vent modéré.",
+    # CARTE 7 : J6 (18 mots)
+    "Conditions plus fraîches avec de rares averses : pensez à vérifier l'adhérence des engins de manutention sur les pistes.",
     
-    # CARTE 8 : J7
-    "Fin d'échéance calme et propice à l'avancement normal de tous vos chantiers sur l'ensemble de la région, avec un temps sec et une visibilité parfaite pour vos équipes.",
+    # CARTE 8 : J7 (17 mots)
+    "Fin d'échéance calme et propice à l'avancement normal de tous vos chantiers sur l'ensemble de la région.",
     
-    # CARTE 9 : Synthèse
-    "Restez vigilants sur les rafales en bord de mer et les sols glissants. Excellente semaine à vos équipes avec Météo BTP !"
+    # CARTE 9 : Synthèse (18 mots)
+    "Restez vigilants sur les rafales en zone exposée. Excellente semaine à vos équipes avec Météo BTP !"
 ]
 
 SCRIPT_GRAND_EST_GRAND_PUBLIC = [
-    # CARTE 1 : J1 Matin
-    "Bonjour à tous, bienvenue pour votre bulletin météo du Grand Est. Ce matin, réveil calme sous un ciel lumineux après dissipation des brouillards dans les vallées lorraines et champenoises, avec une fraîcheur vivifiante.",
-    
-    # CARTE 2 : J1 Après-midi
-    "Pour votre après-midi, de très belles éclaircies s'imposent de la plaine d'Alsace jusqu'à la Champagne dans une atmosphère douce et parfaitement sèche, malgré quelques cumulus décoratifs sur le massif vosgien.",
-    
-    # CARTE 3 : J2
-    "Le lendemain, maintien de conditions clémentes et très lumineuses sur l'Alsace, la Lorraine et la Champagne-Ardenne, avec un thermomètre restant très agréable pour toutes vos sorties extérieures.",
-    
-    # CARTE 4 : J3
-    "Le surlendemain, le ciel se voilera progressivement par l'ouest avec quelques passages nuageux sans conséquence sur les plaines alsaciennes, maintenant une grande douceur sur l'ensemble des départements.",
-    
-    # CARTE 5 : J4
-    "Pour la suite, retour de belles plages ensoleillées entre la plaine du Rhin et le plateau ardennais, avec des températures de saison et un vent faible très agréable pour la saison.",
-    
-    # CARTE 6 : J5
-    "Le temps deviendra plus mitigé avec une alternance de passages nuageux et d'éclaircies passagères pouvant lâcher de rares averses locales, sans impacter la douceur ambiante de Strasbourg à Reims.",
-    
-    # CARTE 7 : J6
-    "En fin d'échéance, un ciel partagé alternera entre nuages et périodes de soleil, tandis que les Vosges conserveront un temps sec et frais propice aux randonnées et activités extérieures.",
-    
-    # CARTE 8 : J7
-    "Dernière journée de prévision sous un ciel bien dégagé et calme sur la quasi-totalité du Grand Est, grâce à la réinstallation durable d'un anticyclone protecteur sur l'Europe centrale.",
-    
-    # CARTE 9 : Éphéméride & Synthèse
-    "Profitez pleinement de ces belles journées lumineuses dans notre grande région. À très vite avec Météo-Climat Pro !"
+    # CARTE 1 : J1 Matin (19 mots)
+    "Bonjour à tous, bienvenue pour votre bulletin météo du Grand Est. Ce matin, réveil calme sur l'ensemble de notre grande région.",
+
+    # CARTE 2 : J1 Après-midi (20 mots)
+    "Pour votre après-midi, de belles éclaircies s'imposent de l'Alsace à la Champagne dans une atmosphère douce et très agréable.",
+
+    # CARTE 3 : J2 (18 mots)
+    "Le lendemain, maintien de conditions clémentes sur l'Alsace, la Lorraine et la Champagne-Ardenne dans la douceur automnale.",
+
+    # CARTE 4 : J3 (19 mots)
+    "Le surlendemain, le ciel se voilera progressivement sur les Vosges avec quelques nuages sans conséquence sur les plaines alsaciennes.",
+
+    # CARTE 5 : J4 (18 mots)
+    "Pour la suite, retour de belles éclaircies entre la plaine du Rhin et le massif des Ardennes avec des températures de saison.",
+
+    # CARTE 6 : J5 (18 mots)
+    "Le temps deviendra plus mitigé avec une alternance de passages nuageux et d'éclaircies passagères sur la région.",
+
+    # CARTE 7 : J6 (18 mots)
+    "En fin d'échéance, un temps variable persistera avec un thermomètre restant agréable de Strasbourg à Reims.",
+
+    # CARTE 8 : J7 (17 mots)
+    "Dernière journée de prévision sous un ciel bien dégagé sur la quasi-totalité du Grand Est avec de belles éclaircies.",
+
+    # CARTE 9 : Éphéméride & Synthèse (16 mots)
+    "Profitez pleinement de ces belles journées dans notre grande région. À très vite avec Météo-Climat Pro !"
 ]
 
 SCRIPT_GRAND_EST_BTP = [
-    # CARTE 1 : J1 Matin
-    "Voici votre bulletin météo BTP pour le Grand Est. Ce matin, conditions sèches et très favorables au démarrage des chantiers, après dissipation rapide des brouillards dans les fonds de vallée vosgiens et lorrains.",
-    
-    # CARTE 2 : J1 Après-midi
-    "Pour l'après-midi, un temps sec et lumineux domine largement, idéal pour le coulage du béton, les travaux de voirie et le terrassement de l'Alsace jusqu'à la Marne.",
-    
-    # CARTE 3 : J2
-    "Le lendemain, maintien d'un temps sec et lumineux de Strasbourg à Reims pour poursuivre vos opérations extérieures en toute sérénité, sans risque de pluie ni vent pénalisant pour vos grues.",
-    
-    # CARTE 4 : J3
-    "Le surlendemain, ciel plus voilé sur les Vosges et les Ardennes : anticipez le séchage des enduits et bétons extérieurs, et vérifiez la bonne tenue des bâchages en zone ventilée.",
-    
-    # CARTE 5 : J4
-    "Pour la suite, de belles fenêtres météo stables s'installent entre les plaines champenoises et l'Alsace, idéales pour cadencer vos plannings de terrassement et d'élévation.",
-    
-    # CARTE 6 : J5
-    "Ciel plus incertain avec de rares ondées éparses : protégez vos zones de stockage et matériaux sensibles à l'humidité, et maintenez une vigilance sur l'adhérence des pistes boueuses.",
-    
-    # CARTE 7 : J6
-    "Conditions plus fraîches sous un ciel partagé : surveillez les températures nocturnes pour les prises de mortier et vérifiez le bon arrimage de vos échafaudages sous le vent modéré.",
-    
-    # CARTE 8 : J7
-    "Fin d'échéance calme et propice à la finalisation normale de vos travaux en cours sur l'ensemble du Grand Est, avec un temps sec et une visibilité optimale.",
-    
-    # CARTE 9 : Synthèse
-    "Restez vigilants sur les accès chantiers et les rafales en altitude. Excellente semaine à toutes vos équipes avec Météo BTP !"
+    # CARTE 1 : J1 Matin (18 mots)
+    "Voici votre bulletin météo BTP pour le Grand Est. Ce matin, conditions sèches et favorables au démarrage des chantiers.",
+
+    # CARTE 2 : J1 Après-midi (19 mots)
+    "Pour l'après-midi, temps calme et lumineux, idéal pour les travaux de gros œuvre et de voirie de l'Alsace à la Marne.",
+
+    # CARTE 3 : J2 (18 mots)
+    "Le lendemain, maintien d'un temps sec de Strasbourg à Reims pour poursuivre vos opérations extérieures en toute sérénité.",
+
+    # CARTE 4 : J3 (18 mots)
+    "Le surlendemain, ciel plus voilé sur les Vosges et les Ardennes : anticipez le séchage des enduits et bétons en altitude.",
+
+    # CARTE 5 : J4 (17 mots)
+    "Pour la suite, belles fenêtres d'éclaircies stables entre plaines champenoises et Alsace pour vos plannings de terrassement.",
+
+    # CARTE 6 : J5 (18 mots)
+    "Ciel plus incertain avec quelques ondées éparses : protégez vos zones de stockage et matériaux sensibles à l'humidité.",
+
+    # CARTE 7 : J6 (18 mots)
+    "Conditions plus fraîches avec de rares averses : vérifiez l'adhérence des engins sur les pistes et zones de manutention.",
+
+    # CARTE 8 : J7 (17 mots)
+    "Fin d'échéance calme et propice à la finalisation de vos travaux en cours sur l'ensemble du Grand Est.",
+
+    # CARTE 9 : Synthèse (18 mots)
+    "Restez vigilants sur les rafales en zone exposée. Excellente semaine à vos équipes avec Météo BTP !"
 ]
 
 def generate_bulletin_pair(mode, script_phrases, output_dir, maps_dir, music_path, api_key, zone="france"):
