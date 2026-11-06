@@ -38,7 +38,7 @@ permissions:
 jobs:
   build-and-deliver-bulletins:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: 1. Récupérer le code du dépôt
@@ -46,10 +46,13 @@ jobs:
         with:
           ref: main
 
-      - name: 2. Installer FFmpeg
+      - name: 2. Vérifier et installer FFmpeg
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          if ! command -v ffmpeg &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y ffmpeg
+          else
+            echo "FFmpeg est déjà disponible : $(ffmpeg -version | head -n 1)"
+          fi
 
       - name: 3. Configurer Python 3.11
         uses: actions/setup-python@v5
