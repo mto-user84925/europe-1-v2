@@ -278,10 +278,7 @@ def generate_bulletin_pair(mode, script_phrases, output_dir, maps_dir, music_pat
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
     if os.path.exists(desktop):
         date_tag = datetime.now().strftime("%d_%m_%Y")
-        if zone != "france":
-        zone_tag = f"_{zone.upper().replace('-', '_')}"
-    else:
-        zone_tag = ""
+        zone_tag = f"_{zone.upper().replace('-', '_')}" if zone != "france" else ""
         f_desk_land = os.path.join(desktop, f"BULLETIN_PAYSAGE_METEO_CLIMAT_PRO{zone_tag}_{mode.upper()}_{date_tag}.mp4")
         f_desk_tok = os.path.join(desktop, f"BULLETIN_TIKTOK_METEO_CLIMAT_PRO{zone_tag}_{mode.upper()}_{date_tag}.mp4")
         shutil.copy(landscape_file, f_desk_land)
@@ -294,8 +291,8 @@ def main():
     parser = argparse.ArgumentParser(description="Générateur Quotidien Bulletins Météo France & Hauts-de-France (Paysage + TikTok)")
     parser.add_argument("--mode", choices=["grand_public", "btp", "both"], default="grand_public",
                         help="Mode de rédaction du bulletin (grand_public, btp, ou both)")
-    parser.add_argument("--zone", choices=["france", "hdf", "grand-est", "both"], default="both",
-                        help="Zone(s) à générer : france, hdf, grand-est, ou both (défaut)")
+    parser.add_argument("--zone", choices=["france", "hdf", "grand-est", "both", "all"], default="both",
+                        help="Zone(s) à générer : france, hdf, grand-est, both ou all (défaut: both = france + hdf + grand-est)")
     parser.add_argument("--output-dir", default=None, help="Dossier de sortie")
     args = parser.parse_args()
 
@@ -308,7 +305,7 @@ def main():
     output_dir = args.output_dir if args.output_dir else os.path.join(cur_dir, "output_bulletins")
     os.makedirs(output_dir, exist_ok=True)
 
-    zones = ["france", "hdf"] if args.zone == "both" else [args.zone]
+    zones = ["france", "hdf", "grand-est"] if args.zone in ["both", "all"] else [args.zone]
     for z in zones:
         cards = collect_cards(z, maps_dir, orientation="landscape")
         log(f"📋 {len(cards)} cartes trouvées pour {z.upper()} dans {maps_dir}")

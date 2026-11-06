@@ -13,6 +13,7 @@ on:
         type: choice
         options:
           - both
+          - all
           - france
           - hdf
           - grand-est
@@ -69,7 +70,7 @@ jobs:
           ZONE_INPUT="${{ github.event.inputs.zone || 'both' }}"
           echo "Génération des cartes pour la zone : $ZONE_INPUT"
 
-          if [ "$ZONE_INPUT" = "both" ] || [ "$ZONE_INPUT" = "france" ]; then
+          if [ "$ZONE_INPUT" = "both" ] || [ "$ZONE_INPUT" = "all" ] || [ "$ZONE_INPUT" = "france" ]; then
             echo "=== 1/2 Cartes France Paysage 16:9 (J+1 à J+7) ==="
             python generate_meteofrance_maps.py --zone france_pictos --days 8 --start-tomorrow --orientation landscape --patrick
 
@@ -77,7 +78,7 @@ jobs:
             python generate_meteofrance_maps.py --zone france_pictos --days 8 --start-tomorrow --orientation portrait --patrick
           fi
 
-          if [ "$ZONE_INPUT" = "both" ] || [ "$ZONE_INPUT" = "hdf" ]; then
+          if [ "$ZONE_INPUT" = "both" ] || [ "$ZONE_INPUT" = "all" ] || [ "$ZONE_INPUT" = "hdf" ]; then
             echo "=== 1/2 Cartes Hauts-de-France Paysage 16:9 (J+1 à J+7) ==="
             python generate_meteofrance_maps.py --zone hdf --days 8 --start-tomorrow --orientation landscape --patrick
 
@@ -85,7 +86,7 @@ jobs:
             python generate_meteofrance_maps.py --zone hdf --days 8 --start-tomorrow --orientation portrait --patrick
           fi
 
-          if [ "$ZONE_INPUT" = "grand-est" ]; then
+          if [ "$ZONE_INPUT" = "both" ] || [ "$ZONE_INPUT" = "all" ] || [ "$ZONE_INPUT" = "grand-est" ]; then
             echo "=== 1/2 Cartes Grand Est Paysage 16:9 (J+1 à J+7) ==="
             python generate_meteofrance_maps.py --zone grand-est --days 8 --start-tomorrow --orientation landscape --patrick
 
