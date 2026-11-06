@@ -961,14 +961,23 @@ const AttestationIntemperieManager = () => {
                 };
             });
 
-            // Override FXI 3S MAX + FXI MAX avec DPClim officiel OMM (horaires déjà en heure locale "HHhMM")
+            // Calibration officielle : FXI 3s = Météociel (avec son heure Météociel), FXI MAX = DPClim (avec son heure DPClim)
             allDateKeys.forEach(dateKey => {
                 const dpDay = stationDailyOfficials[stWind]?.[dateKey];
                 if (dpDay && combinedDays[dateKey]) {
-                    if (dpDay.fxi3s != null) combinedDays[dateKey].stats.gustMax = Math.round(dpDay.fxi3s);
-                    if (dpDay.hfxi3s || dpDay.hxi) combinedDays[dateKey].stats.gustTime = dpDay.hfxi3s || dpDay.hxi;
-                    if (dpDay.fxi != null) combinedDays[dateKey].stats.fxiMax = Math.round(dpDay.fxi);
-                    if (dpDay.hfxi || dpDay.hxi) combinedDays[dateKey].stats.fxiTime = dpDay.hfxi || dpDay.hxi;
+                    // FXI 3S : Météociel en priorité. Si Météociel n'avait aucune donnée vent pour ce jour, repli sur DPClim
+                    if (!combinedDays[dateKey].stats.gustMax || combinedDays[dateKey].stats.gustMax === 0) {
+                        if (dpDay.fxi3s != null) combinedDays[dateKey].stats.gustMax = Math.round(dpDay.fxi3s);
+                        if (dpDay.hfxi3s || dpDay.hxi) combinedDays[dateKey].stats.gustTime = dpDay.hfxi3s || dpDay.hxi;
+                    }
+                    // FXI MAX : DPClim officiel en priorité absolue, avec son heure officielle DPClim
+                    if (dpDay.fxi != null) {
+                        combinedDays[dateKey].stats.fxiMax = Math.round(dpDay.fxi);
+                        combinedDays[dateKey].stats.fxiTime = dpDay.hfxi || dpDay.hxi || combinedDays[dateKey].stats.fxiTime;
+                    } else if (dpDay.fxi3s != null && !combinedDays[dateKey].stats.fxiMax) {
+                        combinedDays[dateKey].stats.fxiMax = Math.round(dpDay.fxi3s);
+                        combinedDays[dateKey].stats.fxiTime = dpDay.hfxi3s || dpDay.hxi || combinedDays[dateKey].stats.fxiTime;
+                    }
                 }
             });
 
@@ -1220,8 +1229,8 @@ const AttestationIntemperieManager = () => {
                                 <th style="border: 1px solid #000;">Pluie (mm)<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoRain || stationMeteoTemp || stationMeteo)}</span></th>
                                 <th style="border: 1px solid #000;">T&deg;mini<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
                                 <th style="border: 1px solid #000;">T&deg;maxi<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoTemp || stationMeteo)}</span></th>
-                                <th style="border: 1px solid #000;">FXI 3s<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
-                                <th style="border: 1px solid #000;">FXI Brut<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
+                                <th style="border: 1px solid #000;">FXI 3s (Météociel)<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
+                                <th style="border: 1px solid #000;">FXI Max (DPClim)<br/><span style="font-size:6.5pt; font-weight:normal; text-transform:none;">${cleanStationName(stationMeteoWind || stationMeteo)}</span></th>
                             </tr>
                         </thead>
                         <tbody>

@@ -108,8 +108,10 @@ export const weatherAPI = {
                                 rain: (obs.rain !== null && obs.rain !== undefined && !isNaN(obs.rain) && obs.rain >= 0 && obs.rain < 150) ? obs.rain : 0,
                                 wind: obs.wind,
                                 gust: obs.gust,
-                                fxi: obs.fxi,
-                                fxi3s: obs.fxi3s,
+                                fxi: null, // FXI max brut anémomètre réservé à DPClim
+                                fxi3s: obs.fxi3s ?? obs.gust, // Météociel = FXI 3S
+                                timeFormatted: obs.time || `${String(hh).padStart(2, '0')}h${String(mm).padStart(2, '0')}`,
+                                hfxi3s_time: obs.time || `${String(hh).padStart(2, '0')}h${String(mm).padStart(2, '0')}`,
                                 dewpoint: obs.dewpoint,
                                 pressure: obs.pres
                             };

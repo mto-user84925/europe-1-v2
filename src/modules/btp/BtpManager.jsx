@@ -792,10 +792,10 @@ Voici les données brutes :`;
                             if (cMatch) {
                                 h.wind = cMatch.wind;
                                 h.gust = cMatch.gust;
-                                h.fxi = cMatch.fxi || cMatch.gust;
-                                h.fxi3s = cMatch.fxi3s || null;
-                                h.hfxi3s_time = cMatch.hfxi3s_time;
-                                h.hfxi_time = cMatch.hfxi_time;
+                                h.fxi = cMatch.fxi || null;
+                                h.fxi3s = cMatch.fxi3s || cMatch.gust;
+                                h.hfxi3s_time = cMatch.hfxi3s_time || (cMatch.time instanceof Date ? `${String(cMatch.time.getHours()).padStart(2, '0')}h${String(cMatch.time.getMinutes()).padStart(2, '0')}` : null);
+                                h.hfxi_time = cMatch.hfxi_time || null;
                             }
                         });
                     }
@@ -883,14 +883,14 @@ Voici les données brutes :`;
                     time: obs.time || dt,
                     htn_time: obs.htn_time,
                     htx_time: obs.htx_time,
-                    hfxi3s_time: obs.hfxi3s_time,
-                    hfxi_time: obs.hfxi_time,
+                    hfxi3s_time: obs.hfxi3s_time || (obs.timeFormatted || (obs.minute !== undefined ? `${String(rowH).padStart(2, '0')}h${String(obs.minute).padStart(2, '0')}` : null)),
+                    hfxi_time: obs.hfxi_time || null,
                     temp: obs.temp,
                     rain: (obs.rain !== null && obs.rain !== undefined && !isNaN(obs.rain) && obs.rain >= 0 && obs.rain < 150) ? obs.rain : 0,
                     snow: 0,
                     w_avg: obs.wind !== null && obs.wind !== undefined ? Math.round(obs.wind) : 0,
-                    w_gst: (obs.fxi3s !== undefined && obs.fxi3s !== null) ? Math.round(obs.fxi3s) : null,
-                    w_fxi: (obs.fxi !== undefined && obs.fxi !== null) ? Math.round(obs.fxi) : (obs.gust ? Math.round(obs.gust) : null),
+                    w_gst: (obs.fxi3s !== undefined && obs.fxi3s !== null) ? Math.round(obs.fxi3s) : (obs.gust !== undefined && obs.gust !== null ? Math.round(obs.gust) : null),
+                    w_fxi: (obs.fxi !== undefined && obs.fxi !== null) ? Math.round(obs.fxi) : null,
                     humi: obs.hum,
                     vv: obs.vv
                 });
@@ -1305,11 +1305,13 @@ Voici les données brutes :`;
                 const rows = dataObj?.rows || [];
                 const ts = rows.map(d => d.temp).filter(v => v !== null);
                 const rs = rows.reduce((a, b) => a + ((b.rain && b.rain >= 0 && b.rain < 150) ? b.rain : 0), 0);
-                // ponytail: FXI 3S = strictement DPClim officiel (OMM). Si DPClim non dispo, afficher '--', ne JAMAIS dupliquer FXI
-                const syncFxi3s = dataObj.officialFxi3s != null ? Math.round(dataObj.officialFxi3s) : null;
-                const validRowFxi = rows.map(d => d.w_fxi).filter(v => v !== null && v !== undefined);
-                const maxRowFxi = validRowFxi.length > 0 ? Math.round(Math.max(...validRowFxi)) : null;
-                const syncFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : maxRowFxi;
+                // FXI 3S = Météociel (avec repli DPClim fxi3s)
+                const validRowGst = rows.map(d => d.w_gst).filter(v => v !== null && v !== undefined && !isNaN(v));
+                const maxRowGst = validRowGst.length > 0 ? Math.round(Math.max(...validRowGst)) : null;
+                const syncFxi3s = maxRowGst !== null ? maxRowGst : (dataObj.officialFxi3s != null ? Math.round(dataObj.officialFxi3s) : null);
+
+                // FXI MAX = DPClim officiel (avec repli Météociel)
+                const syncFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : maxRowGst;
                 totalRainPeriod += rs;
                 let dayIsKo = false;
                 rules.forEach(r => {
@@ -1448,11 +1450,21 @@ Voici les données brutes :`;
             const maxRainRow = rainRows.length ? rainRows.reduce((a, b) => (b.rain || 0) > (a.rain || 0) ? b : a, rainRows[0]) : null;
             const hRain = formatHour(maxRainRow);
 
-            const maxGustRow = dData.length ? dData.reduce((a, b) => (b.w_gst || 0) > (a.w_gst || 0) ? b : a, dData[0]) : null;
-            const hGust = maxGustRow && (maxGustRow.w_gst || 0) > 0 ? (maxGustRow.hfxi3s_time || formatHour(maxGustRow)) : '';
+            // 1. FXI 3S : MÉTÉOCIEL (relevés 6-min RADOME ou observations Météociel)
+            const validGstRows = dData.filter(d => d.w_gst !== null && d.w_gst !== undefined && !isNaN(d.w_gst));
+            const maxGustRow = validGstRows.length ? validGstRows.reduce((a, b) => (Number(b.w_gst) > Number(a.w_gst)) ? b : a, validGstRows[0]) : null;
+            const meteocielGustVal = maxGustRow && (maxGustRow.w_gst || 0) > 0 ? Math.round(maxGustRow.w_gst) : null;
+            const meteocielGustTime = maxGustRow && (maxGustRow.w_gst || 0) > 0 ? (maxGustRow.hfxi3s_time || formatHour(maxGustRow)) : '';
 
-            const maxFxiRow = dData.length ? dData.reduce((a, b) => (b.w_fxi || b.w_gst || 0) > (a.w_fxi || a.w_gst || 0) ? b : a, dData[0]) : null;
-            const hFxi = maxFxiRow && (maxFxiRow.w_fxi || maxFxiRow.w_gst || 0) > 0 ? (maxFxiRow.hfxi_time || formatHour(maxFxiRow)) : '';
+            // Si Météociel a une rafale, elle est prise avec son heure Météociel. Repli sur DPClim si Météociel vide.
+            const fxi3sVal = meteocielGustVal !== null ? meteocielGustVal : (dataObj.officialFxi3s != null ? Math.round(dataObj.officialFxi3s) : null);
+            const fxi3sTime = meteocielGustVal !== null ? meteocielGustTime : (dataObj.officialHfxi3s || dataObj.officialHxi || '');
+
+            // 2. FXI MAX : DPCLIM officiel Météo-France en priorité absolue, avec son heure officielle DPClim
+            const dpFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : null;
+            const dpHfxi = dataObj.officialHfxi || dataObj.officialHxi || '';
+            const fxiMaxVal = dpFxi !== null ? dpFxi : fxi3sVal;
+            const fxiMaxTime = dpFxi !== null ? dpHfxi : fxi3sTime;
 
             const maxAvgRow = dData.length ? dData.reduce((a, b) => (b.w_avg || 0) > (a.w_avg || 0) ? b : a, dData[0]) : null;
             const hAvg = maxAvgRow && (maxAvgRow.w_avg || 0) > 0 ? formatHour(maxAvgRow) : '';
@@ -1482,19 +1494,12 @@ Voici les données brutes :`;
                 sumR += `<td>${asAll.length ? Math.round(Math.max(...asAll)) : 0} km/h${subBadge(hAvg)}</td>`; 
             }
             if (annexCols.windG) { 
-                // FXI 3S : valeur + horaire STRICTEMENT depuis DPClim (officiel OMM)
-                const fxi3sVal = dpFxi3s !== null ? Math.round(dpFxi3s) : null;
-                const fxi3sTime = dataObj.officialHfxi3s || dpHxiFormatted || '';
-                sumH += `<th style="${thStyle}">FXI 3s Max</th>`; 
+                sumH += `<th style="${thStyle}">FXI 3S MAX</th>`; 
                 sumR += `<td>${fxi3sVal !== null ? `${fxi3sVal} km/h` : '--'}${subBadge(fxi3sTime)}</td>`; 
             }
             if (annexCols.windFxi) { 
-                const dpFxi = dataObj.officialFxi != null ? Math.round(dataObj.officialFxi) : null;
-                const fxiVal = dpFxi !== null ? dpFxi : (fxiAll.length ? Math.round(Math.max(...fxiAll)) : 0);
-                // ponytail: horaire de Météociel ou DPClim HXI pour la rafale instantanée
-                const fxiTime = hFxi || dataObj.officialHfxi || (dpFxi !== null ? (dataObj.officialHxi || '') : '');
-                sumH += `<th style="${thStyle}">FXI Max</th>`; 
-                sumR += `<td>${fxiVal ? `${fxiVal} km/h` : '--'}${subBadge(fxiTime)}</td>`; 
+                sumH += `<th style="${thStyle}">FXI MAX</th>`; 
+                sumR += `<td>${fxiMaxVal !== null ? `${fxiMaxVal} km/h` : '--'}${subBadge(fxiMaxTime)}</td>`; 
             }
             if (annexCols.humi) { 
                 sumH += `<th style="${thStyle}">Hum. Max</th>`; 
@@ -1540,13 +1545,14 @@ Voici les données brutes :`;
                 const tempValid = sub.filter(x => x.temp !== null && x.temp !== undefined && !isNaN(x.temp));
                 const tVal = (dpH && dpH.temp !== null && dpH.temp !== undefined) ? dpH.temp : (tempValid.length > 0 ? tempValid[0].temp : null);
 
-                // Pluie : DPClim RR1 prioritaire ou somme 6mn clampée < 150mm
+                // Pluie : DPClim RR1 prioritaire ou somme 6mn clampée < 150mm (anti-artefact strict)
                 let rTot = 0;
-                if (dpH && dpH.rain !== null && dpH.rain !== undefined && !isNaN(dpH.rain)) {
+                if (dpH && dpH.rain !== null && dpH.rain !== undefined && !isNaN(dpH.rain) && dpH.rain >= 0 && dpH.rain < 150) {
                     rTot = Number(dpH.rain);
                 } else {
                     rTot = sub.reduce((acc, x) => acc + ((x.rain && x.rain >= 0 && x.rain < 150) ? Number(x.rain) : 0), 0);
                 }
+                if (rTot > 150) rTot = 0;
 
                 const sTot = sub.reduce((acc, x) => acc + (Number(x.snow) || 0), 0);
 
@@ -1555,22 +1561,28 @@ Voici les données brutes :`;
                 const wAvgFromSub = validAvg.length > 0 ? Math.round(validAvg.reduce((acc, x) => acc + Number(x.w_avg), 0) / validAvg.length) : 0;
                 const wAvg = (dpH && dpH.wind !== null && dpH.wind !== undefined) ? Math.round(dpH.wind) : wAvgFromSub;
 
-                // FXI 3S (normalisé 3s OMM) : DPClim prioritaire
+                // FXI 3S : Météociel 6-min prioritaire pour cette heure
                 let wGst = null;
-                if (dpH && dpH.fxi3s !== null && dpH.fxi3s !== undefined) {
+                const rowGsts = sub.map(x => x.w_gst).filter(v => v !== null && v !== undefined && !isNaN(v));
+                if (rowGsts.length > 0) {
+                    wGst = Math.round(Math.max(...rowGsts));
+                } else if (dpH && dpH.fxi3s !== null && dpH.fxi3s !== undefined) {
                     wGst = Math.round(dpH.fxi3s);
-                } else if (sub.length > 0) {
-                    const rowGsts = sub.map(x => x.w_gst).filter(v => v !== null && v !== undefined);
-                    wGst = rowGsts.length > 0 ? Math.max(...rowGsts) : null;
                 }
 
-                // FXI (rafale instantanée) : DPClim prioritaire
+                // FXI : DPClim officiel horaire prioritaire pour cette heure
                 let wFxi = null;
                 if (dpH && dpH.fxi !== null && dpH.fxi !== undefined) {
                     wFxi = Math.round(dpH.fxi);
-                } else if (sub.length > 0) {
-                    const rowFxis = sub.map(x => x.w_fxi).filter(v => v !== null && v !== undefined);
-                    wFxi = rowFxis.length > 0 ? Math.max(...rowFxis) : null;
+                } else {
+                    const rowFxis = sub.map(x => x.w_fxi).filter(v => v !== null && v !== undefined && !isNaN(v));
+                    if (rowFxis.length > 0) {
+                        wFxi = Math.round(Math.max(...rowFxis));
+                    } else if (dpH && dpH.fxi3s !== null && dpH.fxi3s !== undefined) {
+                        wFxi = Math.round(dpH.fxi3s);
+                    } else {
+                        wFxi = wGst;
+                    }
                 }
 
                 const humValid = sub.filter(x => x.humi !== null && x.humi !== undefined && !isNaN(x.humi));

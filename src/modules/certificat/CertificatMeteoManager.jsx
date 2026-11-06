@@ -1019,9 +1019,9 @@ const CertificatMeteoManager = () => {
                     temp: d.temp,
                     rain: (d.rain !== null && d.rain !== undefined && !isNaN(d.rain) && d.rain >= 0 && d.rain < 150) ? d.rain : 0,
                     wind: d.wind || 0,
-                    gust: d.gust || d.fxi || 0,
-                    fxi3s: d.fxi3s || null,
-                    fxi: d.fxi || d.gust || 0,
+                    gust: d.gust || 0,
+                    fxi3s: d.fxi3s || d.gust || null,
+                    fxi: null, // FXI max réservé à DPClim
                     hum: d.hum,
                     pres: d.pressure || d.pres,
                     h: d.time instanceof Date ? d.time.getHours() : (d.h || 0),
@@ -1054,10 +1054,10 @@ const CertificatMeteoManager = () => {
                             if (cMatch) {
                                 h.wind = cMatch.wind;
                                 h.gust = cMatch.gust;
-                                h.fxi = cMatch.fxi || cMatch.gust;
-                                h.fxi3s = cMatch.fxi3s || null;
-                                h.hfxi3s_time = cMatch.hfxi3s_time;
-                                h.hfxi_time = cMatch.hfxi_time;
+                                h.fxi = cMatch.fxi || null;
+                                h.fxi3s = cMatch.fxi3s || cMatch.gust;
+                                h.hfxi3s_time = cMatch.hfxi3s_time || (cMatch.time instanceof Date ? `${String(cMatch.time.getHours()).padStart(2, '0')}h${String(cMatch.time.getMinutes()).padStart(2, '0')}` : null);
+                                h.hfxi_time = cMatch.hfxi_time || null;
                             }
                         });
                     }
@@ -1121,8 +1121,8 @@ const CertificatMeteoManager = () => {
                         temp: obs.temp,
                         rain: obs.rain || 0,
                         w_avg: obs.wind !== null && obs.wind !== undefined ? Math.round(obs.wind) : 0,
-                        w_gst: (obs.fxi3s !== undefined && obs.fxi3s !== null) ? Math.round(obs.fxi3s) : null,
-                        w_fxi: (obs.fxi !== undefined && obs.fxi !== null) ? Math.round(obs.fxi) : (obs.gust ? Math.round(obs.gust) : null),
+                        w_gst: (obs.fxi3s !== undefined && obs.fxi3s !== null) ? Math.round(obs.fxi3s) : (obs.gust ? Math.round(obs.gust) : null),
+                        w_fxi: (obs.fxi !== undefined && obs.fxi !== null) ? Math.round(obs.fxi) : null,
                         humi: obs.hum,
                         pres: obs.pres,
                         vv: obs.vv
@@ -1179,16 +1179,23 @@ const CertificatMeteoManager = () => {
                 humMax: Math.max(...rows.map(r => Number(r.humi) || 0)),
             };
 
-            // Intégration stricte des paramètres certifiés DPClim Météo-France (FXI 3s OMM et FXI Brut)
+            // Intégration stricte : FXI 3s = Météociel (avec son heure), FXI MAX = DPClim (avec son heure)
             const singleOfficial = dailyOfficialMap[startDate];
             if (singleOfficial && !isPeriod) {
-                if (singleOfficial.fxi3s !== null && singleOfficial.fxi3s > 0) {
-                    stats.windGustMax = Math.round(singleOfficial.fxi3s);
-                    stats.windGustMaxTime = singleOfficial.hfxi3s || singleOfficial.hxi || stats.windGustMaxTime;
+                // FXI 3S : Météociel en priorité. Si Météociel n'avait aucune donnée vent, repli sur DPClim
+                if (!stats.windGustMax || stats.windGustMax === 0) {
+                    if (singleOfficial.fxi3s !== null && singleOfficial.fxi3s > 0) {
+                        stats.windGustMax = Math.round(singleOfficial.fxi3s);
+                        stats.windGustMaxTime = singleOfficial.hfxi3s || singleOfficial.hxi || stats.windGustMaxTime;
+                    }
                 }
+                // FXI MAX : DPClim officiel Météo-France avec heure DPClim
                 if (singleOfficial.fxi !== null && singleOfficial.fxi > 0) {
                     stats.windFxiMax = Math.round(singleOfficial.fxi);
                     stats.windFxiMaxTime = singleOfficial.hfxi || singleOfficial.hxi || stats.windFxiMaxTime;
+                } else if (singleOfficial.fxi3s !== null && singleOfficial.fxi3s > 0 && !stats.windFxiMax) {
+                    stats.windFxiMax = Math.round(singleOfficial.fxi3s);
+                    stats.windFxiMaxTime = singleOfficial.hfxi3s || singleOfficial.hxi || stats.windFxiMaxTime;
                 }
                 if (singleOfficial.tx !== null) {
                     stats.tempMax = singleOfficial.tx;
@@ -1202,12 +1209,14 @@ const CertificatMeteoManager = () => {
                     stats.rainTotal = singleOfficial.rr;
                 }
             } else if (Object.keys(dailyOfficialMap).length > 0 && isPeriod) {
-                const validFxi3s = Object.values(dailyOfficialMap).filter(d => d.fxi3s !== null && d.fxi3s > 0);
-                if (validFxi3s.length > 0) {
-                    const maxD = validFxi3s.reduce((m, d) => d.fxi3s > m.fxi3s ? d : m, validFxi3s[0]);
-                    stats.windGustMax = Math.round(maxD.fxi3s);
-                    stats.windGustMaxTime = maxD.hfxi3s || maxD.hxi || stats.windGustMaxTime;
-                    stats.windGustMaxDate = maxD.date;
+                if (!stats.windGustMax || stats.windGustMax === 0) {
+                    const validFxi3s = Object.values(dailyOfficialMap).filter(d => d.fxi3s !== null && d.fxi3s > 0);
+                    if (validFxi3s.length > 0) {
+                        const maxD = validFxi3s.reduce((m, d) => d.fxi3s > m.fxi3s ? d : m, validFxi3s[0]);
+                        stats.windGustMax = Math.round(maxD.fxi3s);
+                        stats.windGustMaxTime = maxD.hfxi3s || maxD.hxi || stats.windGustMaxTime;
+                        stats.windGustMaxDate = maxD.date;
+                    }
                 }
                 const validFxi = Object.values(dailyOfficialMap).filter(d => d.fxi !== null && d.fxi > 0);
                 if (validFxi.length > 0) {
@@ -1466,8 +1475,8 @@ const CertificatMeteoManager = () => {
             const g = Math.round(stats.windGustMax);
             const gFxi = stats.windFxiMax ? Math.round(stats.windFxiMax) : g;
             const tFxi = stats.windFxiMaxTime || t;
-            addRow("Rafale Max (FXI 3s OMM)", `${g} km/h`, t ? timeDisplay(t, stats.windGustMaxDate) : '-');
-            addRow("Rafale Max (FXI Brut)", `${gFxi} km/h`, tFxi ? timeDisplay(tFxi, stats.windFxiMaxDate) : '-');
+            addRow("Rafale Max (FXI 3s Météociel)", `${g} km/h`, t ? timeDisplay(t, stats.windGustMaxDate) : '-');
+            addRow("Rafale Max (FXI Max DPClim)", `${gFxi} km/h`, tFxi ? timeDisplay(tFxi, stats.windFxiMaxDate) : '-');
         }
         if (showRainParams) {
             const r = stats.rainTotal;

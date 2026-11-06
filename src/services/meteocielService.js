@@ -120,7 +120,9 @@ export const parseStationObservations = (html) => {
     if (summaryRowMatch) {
         dailyExtremes.tx = parseFloat(summaryRowMatch[1].replace(',', '.'));
         dailyExtremes.tn = parseFloat(summaryRowMatch[2].replace(',', '.'));
-        dailyExtremes.fxi = parseFloat(summaryRowMatch[3].replace(',', '.'));
+        dailyExtremes.fxi3s = parseFloat(summaryRowMatch[3].replace(',', '.'));
+        dailyExtremes.gust = dailyExtremes.fxi3s;
+        dailyExtremes.fxi = null; // ponytail: FXI max réservé à DPClim
         dailyExtremes.rr = parseFloat(summaryRowMatch[4].replace(',', '.'));
     } else {
         const cleanVal = (str) => {
@@ -134,7 +136,12 @@ export const parseStationObservations = (html) => {
         const rrMatch = html.match(/Pr[ée]cipitations<br>.*?<\/font><\/td>.*?<td[^>]*>(.*?)<\/td>/is);
         if (txMatch) dailyExtremes.tx = cleanVal(txMatch[1]);
         if (tnMatch) dailyExtremes.tn = cleanVal(tnMatch[1]);
-        if (fxMatch) dailyExtremes.fxi = cleanVal(fxMatch[1]);
+        if (fxMatch) {
+            const fxi3sParsed = cleanVal(fxMatch[1]);
+            dailyExtremes.fxi3s = fxi3sParsed;
+            dailyExtremes.gust = fxi3sParsed;
+            dailyExtremes.fxi = null;
+        }
         if (rrMatch) dailyExtremes.rr = cleanVal(rrMatch[1]);
     }
 
@@ -236,9 +243,11 @@ export const parseStationObservations = (html) => {
             dewpoint: getCellVal(4),
             ff: windAvg,              // Vent moyen km/h
             wind: windAvg,
-            fxi: windGust,            // Rafale max km/h (Météociel)
-            gust: windGust,
-            fxi3s: null,              // ponytail: FXI 3S OMM réservé exclusivement aux relevés certifiés DPClim
+            fxi: null,                // ponytail: FXI max brut anémomètre réservé à DPClim
+            gust: windGust,           // Rafale observée Météociel
+            fxi3s: windGust,          // Météociel = FXI 3S
+            timeFormatted: timeFormatted,
+            hfxi3s_time: timeFormatted,
             pres: pres,               // Pression hPa
             rr: rain,                 // Précipitations mm
             rain: rain
