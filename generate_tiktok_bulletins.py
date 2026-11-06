@@ -250,8 +250,8 @@ def format_card_spatial_summary(zone, exact_data):
     sun_cities = [(c, info['temp'], info['label']) for c, info in exact_data.items() if 'SOLEIL' in info['label']]
     min_city, min_info = min(exact_data.items(), key=lambda x: x[1]['temp'])
     max_city, max_info = max(exact_data.items(), key=lambda x: x[1]['temp'])
-    ref_info = exact_data.get('Lille') if zone == 'hdf' else exact_data.get('Blois')
-    ref_name = 'LILLE' if zone == 'hdf' else 'BLOIS'
+    ref_info = exact_data.get('Lille') if zone == 'hdf' else (exact_data.get('Strasbourg') if zone in ('grand-est', 'grandest') else exact_data.get('Blois'))
+    ref_name = 'LILLE' if zone == 'hdf' else ('STRASBOURG' if zone in ('grand-est', 'grandest') else 'BLOIS')
     ref_text = f"{ref_name} : {ref_info['temp']} degrés sous un ciel {ref_info['label'].lower()}." if ref_info else ""
 
     if len(rain_cities) == 0:
@@ -337,6 +337,11 @@ BASINS_MAP = {
         "Bassin Littoral / Côte d'Opale": ["Dunkerque", "Calais", "Boulogne-sur-Mer", "Berck", "Abbeville"],
         "Bassin Métropole & Flandres": ["Lille", "Arras", "Valenciennes", "Cambrai", "Hazebrouck"],
         "Bassin Picardie / Sud": ["Amiens", "Beauvais", "Compiègne", "Senlis", "Saint-Quentin", "Château-Thierry", "Laon", "Soissons", "Vervins"]
+    },
+    "grand-est": {
+        "Bassin Champagne-Ardenne": ["Charleville-Mézières", "Reims", "Châlons-en-Champagne", "Épernay", "Troyes", "Chaumont"],
+        "Bassin Lorraine": ["Nancy", "Metz", "Verdun", "Bar-le-Duc", "Saint-Dizier", "Épinal"],
+        "Bassin Alsace": ["Strasbourg", "Colmar", "Mulhouse", "Wissembourg", "Sarrebourg", "Sarreguemines"]
     }
 }
 
@@ -438,6 +443,8 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
         zone_title = "la région Centre-Val de Loire, avec un focus sur Blois et le Loir-et-Cher"
     elif zone == "hdf":
         zone_title = "les Hauts-de-France"
+    elif zone in ("grand-est", "grandest"):
+        zone_title = "le Grand Est (Alsace, Lorraine et Champagne-Ardenne)"
     else:
         zone_title = f"la région {zone.upper()}"
     csv_file = find_forecast_csv(zone, maps_dir)
@@ -597,6 +604,9 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
         elif zone == "hdf":
             intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP pour les Hauts-de-France. On commence {start_phrase_cue}, avec..."'
             phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité pour les Hauts-de-France, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
+        elif zone in ("grand-est", "grandest"):
+            intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP pour le Grand Est. On commence {start_phrase_cue}, avec..."'
+            phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité pour le Grand Est, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
         else:
             intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Voici votre bulletin météo BTP. On commence {start_phrase_cue}, avec..."'
             phrase_9_desc = "Heure de fin de journée chantier, consignes de sécurité, et mot de conclusion chaleureux signé Météo BTP et Météo-Climat Pro."
@@ -618,6 +628,8 @@ def generate_script_from_data(zone, cards, api_key, maps_dir, mode="grand_public
             intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo des Hauts-de-France. On commence {start_phrase_cue}, avec..."'
         elif zone == "cvl":
             intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo de la région Centre-Val de Loire. On commence {start_phrase_cue}, avec..."'
+        elif zone in ("grand-est", "grandest"):
+            intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo du Grand Est. On commence {start_phrase_cue}, avec..."'
         else:
             intro_rule = f'La Phrase 1 DOIT impérativement commencer exactement par : "Bonjour à tous, bienvenue pour votre bulletin météo de {zone_title}. On commence {start_phrase_cue}, avec..."'
         specific_rules = """5. CONSEILS GRAND PUBLIC & SORTIES :

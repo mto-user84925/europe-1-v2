@@ -143,9 +143,72 @@ SCRIPT_HDF_BTP = [
     "Restez vigilants sur les rafales en zone exposée. Excellente semaine à vos équipes avec Météo BTP !"
 ]
 
+SCRIPT_GRAND_EST_GRAND_PUBLIC = [
+    # CARTE 1 : J1 Matin (19 mots)
+    "Bonjour à tous, bienvenue pour votre bulletin météo du Grand Est. Ce matin, réveil calme sur l'ensemble de notre grande région.",
+
+    # CARTE 2 : J1 Après-midi (20 mots)
+    "Pour votre après-midi, de belles éclaircies s'imposent de l'Alsace à la Champagne dans une atmosphère douce et très agréable.",
+
+    # CARTE 3 : J2 (18 mots)
+    "Le lendemain, maintien de conditions clémentes sur l'Alsace, la Lorraine et la Champagne-Ardenne dans la douceur automnale.",
+
+    # CARTE 4 : J3 (19 mots)
+    "Le surlendemain, le ciel se voilera progressivement sur les Vosges avec quelques nuages sans conséquence sur les plaines alsaciennes.",
+
+    # CARTE 5 : J4 (18 mots)
+    "Pour la suite, retour de belles éclaircies entre la plaine du Rhin et le massif des Ardennes avec des températures de saison.",
+
+    # CARTE 6 : J5 (18 mots)
+    "Le temps deviendra plus mitigé avec une alternance de passages nuageux et d'éclaircies passagères sur la région.",
+
+    # CARTE 7 : J6 (18 mots)
+    "En fin d'échéance, un temps variable persistera avec un thermomètre restant agréable de Strasbourg à Reims.",
+
+    # CARTE 8 : J7 (17 mots)
+    "Dernière journée de prévision sous un ciel bien dégagé sur la quasi-totalité du Grand Est avec de belles éclaircies.",
+
+    # CARTE 9 : Éphéméride & Synthèse (16 mots)
+    "Profitez pleinement de ces belles journées dans notre grande région. À très vite avec Météo-Climat Pro !"
+]
+
+SCRIPT_GRAND_EST_BTP = [
+    # CARTE 1 : J1 Matin (18 mots)
+    "Voici votre bulletin météo BTP pour le Grand Est. Ce matin, conditions sèches et favorables au démarrage des chantiers.",
+
+    # CARTE 2 : J1 Après-midi (19 mots)
+    "Pour l'après-midi, temps calme et lumineux, idéal pour les travaux de gros œuvre et de voirie de l'Alsace à la Marne.",
+
+    # CARTE 3 : J2 (18 mots)
+    "Le lendemain, maintien d'un temps sec de Strasbourg à Reims pour poursuivre vos opérations extérieures en toute sérénité.",
+
+    # CARTE 4 : J3 (18 mots)
+    "Le surlendemain, ciel plus voilé sur les Vosges et les Ardennes : anticipez le séchage des enduits et bétons en altitude.",
+
+    # CARTE 5 : J4 (17 mots)
+    "Pour la suite, belles fenêtres d'éclaircies stables entre plaines champenoises et Alsace pour vos plannings de terrassement.",
+
+    # CARTE 6 : J5 (18 mots)
+    "Ciel plus incertain avec quelques ondées éparses : protégez vos zones de stockage et matériaux sensibles à l'humidité.",
+
+    # CARTE 7 : J6 (18 mots)
+    "Conditions plus fraîches avec de rares averses : vérifiez l'adhérence des engins sur les pistes et zones de manutention.",
+
+    # CARTE 8 : J7 (17 mots)
+    "Fin d'échéance calme et propice à la finalisation de vos travaux en cours sur l'ensemble du Grand Est.",
+
+    # CARTE 9 : Synthèse (18 mots)
+    "Restez vigilants sur les rafales en zone exposée. Excellente semaine à vos équipes avec Météo BTP !"
+]
+
 def generate_bulletin_pair(mode, script_phrases, output_dir, maps_dir, music_path, api_key, zone="france"):
     """Génère la version Paysage 16:9 puis assemble la version TikTok 9:16 par réutilisation directe de l'audio"""
-    prefix = f"bulletin_hdf_{mode}" if zone == "hdf" else f"bulletin_{mode}"
+    if zone == "hdf":
+        prefix = f"bulletin_hdf_{mode}"
+    elif zone == "grand-est":
+        prefix = f"bulletin_grand-est_{mode}"
+    else:
+        prefix = f"bulletin_{mode}"
     landscape_file = os.path.join(output_dir, f"{prefix}_paysage_16_9.mp4")
     tiktok_file = os.path.join(output_dir, f"{prefix}_tiktok_9_16.mp4")
 
@@ -215,7 +278,10 @@ def generate_bulletin_pair(mode, script_phrases, output_dir, maps_dir, music_pat
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
     if os.path.exists(desktop):
         date_tag = datetime.now().strftime("%d_%m_%Y")
-        zone_tag = f"_{zone.upper()}" if zone != "france" else ""
+        if zone != "france":
+        zone_tag = f"_{zone.upper().replace('-', '_')}"
+    else:
+        zone_tag = ""
         f_desk_land = os.path.join(desktop, f"BULLETIN_PAYSAGE_METEO_CLIMAT_PRO{zone_tag}_{mode.upper()}_{date_tag}.mp4")
         f_desk_tok = os.path.join(desktop, f"BULLETIN_TIKTOK_METEO_CLIMAT_PRO{zone_tag}_{mode.upper()}_{date_tag}.mp4")
         shutil.copy(landscape_file, f_desk_land)
@@ -228,8 +294,8 @@ def main():
     parser = argparse.ArgumentParser(description="Générateur Quotidien Bulletins Météo France & Hauts-de-France (Paysage + TikTok)")
     parser.add_argument("--mode", choices=["grand_public", "btp", "both"], default="grand_public",
                         help="Mode de rédaction du bulletin (grand_public, btp, ou both)")
-    parser.add_argument("--zone", choices=["france", "hdf", "both"], default="both",
-                        help="Zone(s) à générer : france, hdf, ou both (défaut)")
+    parser.add_argument("--zone", choices=["france", "hdf", "grand-est", "both"], default="both",
+                        help="Zone(s) à générer : france, hdf, grand-est, ou both (défaut)")
     parser.add_argument("--output-dir", default=None, help="Dossier de sortie")
     args = parser.parse_args()
 
@@ -243,7 +309,6 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     zones = ["france", "hdf"] if args.zone == "both" else [args.zone]
-
     for z in zones:
         cards = collect_cards(z, maps_dir, orientation="landscape")
         log(f"📋 {len(cards)} cartes trouvées pour {z.upper()} dans {maps_dir}")
@@ -256,7 +321,12 @@ def main():
             script_gp = generate_script_from_data(z, cards, api_key, maps_dir, mode="grand_public")
             if not script_gp:
                 log(f"⚠️ ATTENTION : script IA indisponible pour {z.upper()} — utilisation du fallback de secours")
-                script_gp = SCRIPT_HDF_GRAND_PUBLIC if z == "hdf" else SCRIPT_GRAND_PUBLIC
+                if z == "hdf":
+                    script_gp = SCRIPT_HDF_GRAND_PUBLIC
+                elif z == "grand-est":
+                    script_gp = SCRIPT_GRAND_EST_GRAND_PUBLIC
+                else:
+                    script_gp = SCRIPT_GRAND_PUBLIC
             generate_bulletin_pair("grand_public", script_gp, output_dir, maps_dir, music_path, api_key, zone=z)
 
         if args.mode in ["btp", "both"]:
@@ -264,7 +334,12 @@ def main():
             script_btp = generate_script_from_data(z, cards, api_key, maps_dir, mode="btp")
             if not script_btp:
                 log(f"⚠️ ATTENTION : script IA indisponible pour {z.upper()} — utilisation du fallback de secours")
-                script_btp = SCRIPT_HDF_BTP if z == "hdf" else SCRIPT_BTP
+                if z == "hdf":
+                    script_btp = SCRIPT_HDF_BTP
+                elif z == "grand-est":
+                    script_btp = SCRIPT_GRAND_EST_BTP
+                else:
+                    script_btp = SCRIPT_BTP
             generate_bulletin_pair("btp", script_btp, output_dir, maps_dir, music_path, api_key, zone=z)
 
 if __name__ == "__main__":

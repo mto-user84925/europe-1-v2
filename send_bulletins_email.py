@@ -73,6 +73,8 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory", zone
         link_fr_tiktok = f"{release_base}/bulletin_{mode}_tiktok_9_16.mp4"
         link_hdf_paysage = f"{release_base}/bulletin_hdf_{mode}_paysage_16_9.mp4"
         link_hdf_tiktok = f"{release_base}/bulletin_hdf_{mode}_tiktok_9_16.mp4"
+        link_gest_paysage = f"{release_base}/bulletin_grand-est_{mode}_paysage_16_9.mp4"
+        link_gest_tiktok = f"{release_base}/bulletin_grand-est_{mode}_tiktok_9_16.mp4"
 
         buttons = []
         if zone in ["both", "france"]:
@@ -89,6 +91,13 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory", zone
       <a href="{link_hdf_tiktok}" class="btn btn-tiktok" style="color:white; background: linear-gradient(135deg, #0d9488, #0f766e);">📱 Télécharger le Bulletin HDF TIKTOK (9:16 - 1080x1920)</a>
             """)
 
+        if zone == "grand-est":
+            buttons.append(f"""
+      <div style="margin: 16px 0 6px; font-weight: 700; color: #7c3aed; font-size: 15px;">🥨 Bulletins Régionaux (Grand Est) :</div>
+      <a href="{link_gest_paysage}" class="btn btn-paysage" style="color:white; background: linear-gradient(135deg, #7c3aed, #6d28d9);">📺 Télécharger le Bulletin GRAND EST PAYSAGE (16:9 - 1920x1080)</a>
+      <a href="{link_gest_tiktok}" class="btn btn-tiktok" style="color:white; background: linear-gradient(135deg, #9333ea, #7e22ce);">📱 Télécharger le Bulletin GRAND EST TIKTOK (9:16 - 1080x1920)</a>
+            """)
+
         buttons.append(f'<a href="{releases_page}" class="btn btn-all" style="color:white; margin-top: 10px;">📂 Accéder à la page des Releases GitHub</a>')
         buttons_html = "\n".join(buttons)
 
@@ -96,6 +105,8 @@ def send_bulletin_notification(mode="grand_public", triggered_by="gregory", zone
             zone_text = "Hauts-de-France"
         elif zone == "france":
             zone_text = "France"
+        elif zone == "grand-est":
+            zone_text = "Grand Est"
         else:
             zone_text = "France & Hauts-de-France"
 
