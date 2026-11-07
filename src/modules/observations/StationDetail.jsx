@@ -41,6 +41,7 @@ export default function StationDetail() {
     }, [selectedDateStr]);
     const [activeTab, setActiveTab] = useState('obs'); // 'obs' or 'climatology'
     const [normals, setNormals] = useState(null);
+    const [officialDaily, setOfficialDaily] = useState(null);
 
     useEffect(() => {
         let isCancelled = false;
@@ -54,13 +55,13 @@ export default function StationDetail() {
                 dY.setDate(dY.getDate() - 1);
                 const prevDateStr = `${dY.getFullYear()}-${String(dY.getMonth() + 1).padStart(2, '0')}-${String(dY.getDate()).padStart(2, '0')}`;
 
-                // Chargement en parallèle date sélectionnée + veille J-1
-                const [dataRes, dataYRes] = await Promise.all([
+                // Chargement en parallèle date sélectionnée + veille J-1 + officiel DPClim
+                const [dataRes, dataYRes, officialDailyRes] = await Promise.all([
                     (async () => {
                         let res = [];
-                        if (!isPast) {
-                            try { res = await weatherAPI.getStation6mnHistory(stationId, selectedDate); } catch (e) { }
-                        }
+                        // 1. Relevés 6 minutes (Météociel via VPS OVH ou Supabase)
+                        try { res = await weatherAPI.getStation6mnHistory(stationId, selectedDate); } catch (e) { }
+                        // 2. Repli DPClim officiel horaire si pas de 6mn
                         if (!res || res.length === 0) {
                             try {
                                 const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
@@ -72,9 +73,7 @@ export default function StationDetail() {
                     })(),
                     (async () => {
                         let res = [];
-                        if (prevDateStr === todayStr) {
-                            try { res = await weatherAPI.getStation6mnHistory(stationId, dY); } catch (e) { }
-                        }
+                        try { res = await weatherAPI.getStation6mnHistory(stationId, dY); } catch (e) { }
                         if (!res || res.length === 0) {
                             try {
                                 const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
@@ -83,12 +82,21 @@ export default function StationDetail() {
                             } catch (e) { }
                         }
                         return res || [];
+                    })(),
+                    (async () => {
+                        // 3. Indicateurs officiels certifiés DPClim (FXI MAX, FXI 3S OMM, Tx, Tn, RR)
+                        try {
+                            const { meteoFranceClimService } = await import('../../services/meteoFranceClimService');
+                            const daily = await meteoFranceClimService.fetchStationHistory(stationId, selectedDateStr, selectedDateStr);
+                            return daily?.[0] || null;
+                        } catch (e) { return null; }
                     })()
                 ]);
 
                 if (!isCancelled) {
                     setFullHistory(dataRes);
                     setYesterdayHistory(dataYRes);
+                    setOfficialDaily(officialDailyRes);
                 }
 
                 // Complément métadonnées en arrière-plan
@@ -676,6 +684,20 @@ export default function StationDetail() {
                                     <span className="sub-label">Direction de la rafale :</span>
                                     <span className="sub-value">{stats.hasWind && stats.maxGustDir !== null ? `${stats.maxGustDir}°` : (stats.hasWind ? '--' : 'Non mesuré')}</span>
                                 </div>
+                                {officialDaily?.fxi ? (
+                                    <div className="sub-stat-row record-row" style={{ color: '#ea580c' }}>
+                                        <span className="sub-label">FXI MAX certifié DPClim :</span>
+                                        <span className="sub-value record-val" style={{ color: '#ea580c', fontWeight: 'bold' }}>
+                                            {Math.round(officialDaily.fxi)} km/h {officialDaily.hfxi || officialDaily.hxi ? <small>({officialDaily.hfxi || officialDaily.hxi})</small> : ''}
+                                        </span>
+                                    </div>
+                                ) : null}
+                                {officialDaily?.fxi3s ? (
+                                    <div className="sub-stat-row">
+                                        <span className="sub-label">FXI 3S officiel OMM :</span>
+                                        <span className="sub-value">{Math.round(officialDaily.fxi3s)} km/h {officialDaily.hfxi3s ? <small>({officialDaily.hfxi3s})</small> : ''}</span>
+                                    </div>
+                                ) : null}
                                 <div className="sub-stat-row">
                                     <span className="sub-label">Poste anémomètre :</span>
                                     <span className="sub-value">{stats.hasWind ? 'Opérationnel' : 'Non équipé'}</span>
@@ -1068,7 +1090,7 @@ export default function StationDetail() {
             )}
 
             <footer className="obs-footer">
-                Données via Météo-France
+                Données certifiées Météo-France DPClim & Relevés 6mn Météociel via VPS OVH (15.235.120.41)
             </footer>
         </div>
     );
