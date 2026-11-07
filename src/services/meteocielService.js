@@ -2,9 +2,9 @@
  * Service pour récupérer et parser les données d'archives de Meteociel
  */
 
-// ponytail: Proxy Vercel same-origin en primaire (relais Netlify server-side zéro CORS + cache Edge), Netlify direct en fallback
+// ponytail: Proxy Vercel same-origin en primaire (relais VPS OVH 15.235.120.41 zéro CORS + cache Edge), VPS direct en fallback
 const API_METEOCIEL = '/api-meteociel';
-const NETLIFY_BASE = 'https://visionary-chebakia-465960.netlify.app/api-meteociel';
+const VPS_BASE = 'http://15.235.120.41/api-meteociel';
 
 export const METEOCIEL_MODES = {
     TEMPERATURE_DIRECT: { id: '0', label: 'Température Actuelle (Direct)', unit: '°C' },
@@ -35,7 +35,7 @@ export const fetchMeteocielArchives = async (date, modeId) => {
             response = await fetch(API_METEOCIEL + path);
             if (!response.ok) throw new Error(`Proxy ${response.status}`);
         } catch (_) {
-            response = await fetch(NETLIFY_BASE + path);
+            response = await fetch(VPS_BASE + path);
         }
         if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
 
@@ -306,23 +306,23 @@ export const fetchStationObservations = async (stationId, date, isIntra = false)
 
         let html = '';
         try {
-            // 1. Proxy Vercel same-origin (relais server-side vers Netlify visionary-chebakia, zéro CORS)
+            // 1. Proxy Vercel same-origin (relais server-side vers VPS OVH, zéro CORS)
             const response = await fetch(API_METEOCIEL + path);
             if (!response.ok) throw new Error(`Proxy HTTP ${response.status}`);
             const buffer = await response.arrayBuffer();
             html = new TextDecoder('windows-1252').decode(buffer);
         } catch (_proxyErr) {
             try {
-                // 2. Netlify direct en secours
-                const response = await fetch(NETLIFY_BASE + path);
-                if (!response.ok) throw new Error(`Netlify HTTP ${response.status}`);
+                // 2. VPS OVH direct en secours (15.235.120.41 - zéro Netlify)
+                const response = await fetch(VPS_BASE + path);
+                if (!response.ok) throw new Error(`VPS HTTP ${response.status}`);
                 const buffer = await response.arrayBuffer();
                 html = new TextDecoder('windows-1252').decode(buffer);
-            } catch (_netlifyErr) {
+            } catch (_vpsErr) {
                 // 3. AllOrigins CORS proxy (dernier recours)
                 const fullTarget = `https://www.meteociel.fr${path}`;
                 const backupResp = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(fullTarget)}`);
-                if (!backupResp.ok) throw _netlifyErr;
+                if (!backupResp.ok) throw _vpsErr;
                 const buffer = await backupResp.arrayBuffer();
                 html = new TextDecoder('windows-1252').decode(buffer);
             }
