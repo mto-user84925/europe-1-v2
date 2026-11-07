@@ -165,7 +165,7 @@ const MeteocielArchives = () => {
                         disabled={loading || loadingMulti}
                     >
                         {loading || loadingMulti ? (
-                            <><Loader2 className="animate-spin" size={18} /> Récupération...</>
+                            <><Loader2 className="animate-spin" size={18} /> Récupération VPS...</>
                         ) : (
                             <><Search size={18} /> {isMultiMode ? 'Lancer Extraction' : 'Actualiser'}</>
                         )}
@@ -218,7 +218,7 @@ const MeteocielArchives = () => {
                                         <td colSpan={isMultiMode ? 5 : 4} className="loading-row">
                                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
                                                 <Loader2 className="animate-spin" size={32} />
-                                                <span>{loadingMulti ? "Extraction multi-dates en cours... Cela peut prendre jusqu'à 1 minute selon la période." : "Récupération des données..."}</span>
+                                                <span>{loadingMulti ? "Extraction multi-dates via VPS OVH en cours... (jusqu'à 1 min selon la période)" : "Récupération des données Météociel via VPS OVH (15.235.120.41)..."}</span>
                                             </div>
                                         </td>
                                     </tr>

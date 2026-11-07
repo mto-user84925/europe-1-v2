@@ -717,7 +717,7 @@ const AttestationIntemperieManager = () => {
         }
 
         const finalEndDate = isPeriod ? endDate : startDate;
-        setStatus('⏳ Récupération des relevés Météociel & certification FXI 3S...');
+        setStatus('⏳ Récupération des relevés Météociel via VPS OVH (15.235.120.41) & DPClim FXI MAX...');
         setGlobalData(null);
 
         try {
@@ -812,7 +812,7 @@ const AttestationIntemperieManager = () => {
 
             for (const stId of uniqueStationIds) {
                 const sName = stationNames[stId] || stId;
-                setStatus(`⏳ Récupération DPClim officiel (${sName})...`);
+                setStatus(`⏳ Récupération DPClim officiel FXI MAX (${sName})...`);
                 
                 // 1. Charger les valeurs certifiées officielles DPClim (FXI 3s OMM, FXI Brut, Tx, Tn, RR)
                 try {
@@ -1003,7 +1003,7 @@ const AttestationIntemperieManager = () => {
                 setStationMeteoWind(nameTemp);
             }
 
-            setStatus(`✅ ${allDateKeys.length} jours chargés avec succès (Météociel + FXI 3S DPClim).`);
+            setStatus(`✅ ${allDateKeys.length} jours chargés avec succès (Météociel via VPS OVH + DPClim officiel FXI MAX).`);
             refreshNearbyStations(startDate, finalEndDate);
 
         } catch (e) {

@@ -962,7 +962,7 @@ const CertificatMeteoManager = () => {
             return;
         }
 
-        setStatus('⏳ Récupération des observations Météociel & certification FXI 3S...');
+        setStatus('⏳ Récupération observations Météociel via VPS OVH (15.235.120.41) & DPClim FXI MAX...');
         setGlobalData({});
 
         try {
@@ -1007,8 +1007,8 @@ const CertificatMeteoManager = () => {
                 console.warn("[Certificat] DPClim quotidien info:", eDaily);
             }
 
-            // 2. Récupération des observations fines au pas de 6 minutes (Météociel RADOME - 240 mesures/jour)
-            setStatus('⏳ Récupération des relevés 6 minutes Météociel RADOME...');
+            // 2. Récupération des observations fines au pas de 6 minutes (Météociel RADOME via VPS OVH - 240 mesures/jour)
+            setStatus('⏳ Récupération des relevés 6 minutes Météociel via VPS OVH (15.235.120.41)...');
             let history = [];
             const data6mn = await weatherAPI.getStation6mnHistoryRange(selectedStationId, startDate, finalEndDate, (msg) => setStatus('⏳ ' + msg));
             if (data6mn && data6mn.length > 0) {
@@ -1249,7 +1249,7 @@ const CertificatMeteoManager = () => {
             if (resolvedRefStations?.windStation) {
                 setShowDetailedStations(true);
             }
-            setStatus(`✅ Données chargées avec succès (${refText}).`);
+            setStatus(`✅ Données certifiées chargées avec succès (Météociel via VPS OVH + DPClim officiel FXI MAX). ${refText}`);
 
             refreshNearbyStations(startDate, finalEndDate);
 

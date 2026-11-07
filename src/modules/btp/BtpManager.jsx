@@ -688,7 +688,7 @@ Voici les données brutes :`;
             return;
         }
 
-        setStatus('⏳ Récupération préalable certification FXI 3S DPClim...');
+        setStatus('⏳ Récupération certification DPClim officiel (FXI MAX)...');
         const prevMetadata = globalData?.__metadata || {};
         setGlobalData({}); // Reset current data
 
@@ -763,8 +763,8 @@ Voici les données brutes :`;
                 console.warn("[BTP] DPClim quotidien info:", eDaily);
             }
 
-            // 2. Source Principale pour les observations fines : Relevés 6 minutes Météociel RADOME (240 mesures/jour)
-            setStatus('⏳ Récupération des relevés 6 minutes Météociel RADOME...');
+            // 2. Source Principale pour les observations fines : Relevés 6 minutes Météociel RADOME via VPS OVH (240 mesures/jour)
+            setStatus('⏳ Récupération des relevés 6 minutes Météociel via VPS OVH (15.235.120.41)...');
             let history = await weatherAPI.getStation6mnHistoryRange(selectedStationId, startDate, endDate, (msg) => setStatus('⏳ ' + msg));
 
             // Si station sans capteur de vent, récupérer les vents 6mn du poste anémomètre le plus proche
@@ -943,7 +943,7 @@ Voici les données brutes :`;
                 setGlobalData(newGlobalData);
                 setStationMeteo(refText);
                 const dayCount = Object.keys(newGlobalData).filter(k => k !== '__metadata').length;
-                setStatus(`✅ ${dayCount} jours importés avec succès (${refText}).`);
+                setStatus(`✅ ${dayCount} jours importés avec succès (Météociel via VPS OVH + DPClim officiel FXI MAX). ${refText}`);
             }
 
         } catch (e) {

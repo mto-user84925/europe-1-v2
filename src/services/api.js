@@ -165,7 +165,7 @@ export const weatherAPI = {
         while (curr <= end) {
             count++;
             const dStr = toLocalISODate(curr);
-            onProgress(`Récupération 6 minutes ${dStr} (${count}/${totalDays})…`);
+            onProgress(`Récupération 6 minutes ${dStr} via VPS OVH (${count}/${totalDays})…`);
             try {
                 const dayObs = await weatherAPI.getStation6mnHistory(stationId, curr);
                 if (dayObs && dayObs.length > 0) {
